@@ -1,6 +1,4 @@
-bash
 streamlit
 pandas
 gspread
-re
 google-auth
