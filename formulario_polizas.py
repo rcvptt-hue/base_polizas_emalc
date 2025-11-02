@@ -135,34 +135,36 @@ def cargar_datos():
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # Función para guardar datos (invalida el cache)
-def guardar_datos(df_prospectos, df_polizas, df_cobranza=None, df_seguimiento=None):
+def guardar_datos(df_prospectos=None, df_polizas=None, df_cobranza=None, df_seguimiento=None):
     """Guardar datos en Google Sheets e invalidar cache"""
     try:
         spreadsheet = conectar_google_sheets()
         if not spreadsheet:
             return False
         
-        # Actualizar hoja de Prospectos
-        try:
-            worksheet_prospectos = spreadsheet.worksheet("Prospectos")
-            worksheet_prospectos.clear()
-            if not df_prospectos.empty:
-                data = [df_prospectos.columns.values.tolist()] + df_prospectos.fillna('').values.tolist()
-                worksheet_prospectos.update(data, value_input_option='USER_ENTERED')
-        except Exception as e:
-            st.error(f"❌ Error al actualizar hoja 'Prospectos': {e}")
-            return False
+        # Actualizar hoja de Prospectos si se proporciona
+        if df_prospectos is not None:
+            try:
+                worksheet_prospectos = spreadsheet.worksheet("Prospectos")
+                worksheet_prospectos.clear()
+                if not df_prospectos.empty:
+                    data = [df_prospectos.columns.values.tolist()] + df_prospectos.fillna('').values.tolist()
+                    worksheet_prospectos.update(data, value_input_option='USER_ENTERED')
+            except Exception as e:
+                st.error(f"❌ Error al actualizar hoja 'Prospectos': {e}")
+                return False
         
-        # Actualizar hoja de Pólizas
-        try:
-            worksheet_polizas = spreadsheet.worksheet("Polizas")
-            worksheet_polizas.clear()
-            if not df_polizas.empty:
-                data = [df_polizas.columns.values.tolist()] + df_polizas.fillna('').values.tolist()
-                worksheet_polizas.update(data, value_input_option='USER_ENTERED')
-        except Exception as e:
-            st.error(f"❌ Error al actualizar hoja 'Polizas': {e}")
-            return False
+        # Actualizar hoja de Pólizas si se proporciona
+        if df_polizas is not None:
+            try:
+                worksheet_polizas = spreadsheet.worksheet("Polizas")
+                worksheet_polizas.clear()
+                if not df_polizas.empty:
+                    data = [df_polizas.columns.values.tolist()] + df_polizas.fillna('').values.tolist()
+                    worksheet_polizas.update(data, value_input_option='USER_ENTERED')
+            except Exception as e:
+                st.error(f"❌ Error al actualizar hoja 'Polizas': {e}")
+                return False
         
         # Actualizar hoja de Cobranza si se proporciona
         if df_cobranza is not None:
@@ -437,6 +439,18 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         prospecto_data = {}
         modo_edicion = False
     
+    # Botón para cancelar edición
+    if modo_edicion:
+        if st.button("❌ Cancelar Edición"):
+            st.session_state.cancelar_edicion = True
+            st.rerun()
+    
+    # Reiniciar modo edición si se canceló
+    if 'cancelar_edicion' in st.session_state and st.session_state.cancelar_edicion:
+        st.session_state.cancelar_edicion = False
+        modo_edicion = False
+        prospecto_data = {}
+    
     with st.form("form_prospectos", clear_on_submit=not modo_edicion):
         col1, col2 = st.columns(2)
         
@@ -514,12 +528,16 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             for error in fecha_errors:
                 st.error(error)
         
-        if modo_edicion:
-            submitted = st.form_submit_button("💾 Actualizar Prospecto")
-        else:
-            submitted = st.form_submit_button("💾 Agregar Prospecto")
+        # Botones de acción
+        col_b1, col_b2, col_b3 = st.columns([1, 1, 1])
         
-        if submitted:
+        with col_b1:
+            if modo_edicion:
+                submitted_actualizar = st.form_submit_button("💾 Actualizar Prospecto")
+            else:
+                submitted_agregar = st.form_submit_button("💾 Agregar Prospecto")
+        
+        if modo_edicion and submitted_actualizar:
             if not nombre_razon:
                 st.warning("Debe completar al menos el nombre o razón social")
             elif fecha_errors:
@@ -540,21 +558,70 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     "Referenciador": referenciador
                 }
                 
-                if modo_edicion:
-                    # Actualizar prospecto existente
-                    index = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_a_editar].index
-                    for key, value in nuevo_prospecto.items():
-                        df_prospectos.loc[index, key] = value
-                    mensaje = "✅ Prospecto actualizado correctamente"
-                else:
-                    # Agregar nuevo prospecto
-                    df_prospectos = pd.concat([df_prospectos, pd.DataFrame([nuevo_prospecto])], ignore_index=True)
-                    mensaje = "✅ Prospecto agregado correctamente"
+                # Actualizar prospecto existente
+                index = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_a_editar].index
+                for key, value in nuevo_prospecto.items():
+                    df_prospectos.loc[index, key] = value
                 
-                if guardar_datos(df_prospectos, df_polizas):
-                    st.success(mensaje)
+                if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
+                    st.success("✅ Prospecto actualizado correctamente")
+                    # Limpiar selección de edición
+                    st.session_state.cancelar_edicion = True
+                    st.rerun()
+                else:
+                    st.error("❌ Error al actualizar el prospecto")
+        
+        elif not modo_edicion and submitted_agregar:
+            if not nombre_razon:
+                st.warning("Debe completar al menos el nombre o razón social")
+            elif fecha_errors:
+                st.warning("Corrija los errores en las fechas antes de guardar")
+            else:
+                nuevo_prospecto = {
+                    "Tipo Persona": tipo_persona,
+                    "Nombre/Razón Social": nombre_razon,
+                    "Fecha Nacimiento": fecha_nacimiento if fecha_nacimiento else "",
+                    "RFC": rfc,
+                    "Teléfono": telefono,
+                    "Correo": correo,
+                    "Producto": producto,
+                    "Fecha Registro": fecha_registro if fecha_registro else fecha_actual(),
+                    "Fecha Contacto": fecha_contacto if fecha_contacto else "",
+                    "Seguimiento": seguimiento if seguimiento else "",
+                    "Representantes Legales": representantes,
+                    "Referenciador": referenciador
+                }
+                
+                # Agregar nuevo prospecto
+                df_prospectos = pd.concat([df_prospectos, pd.DataFrame([nuevo_prospecto])], ignore_index=True)
+                
+                if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
+                    st.success("✅ Prospecto agregado correctamente")
+                    st.rerun()
                 else:
                     st.error("❌ Error al guardar el prospecto")
+    
+    # Mostrar lista de prospectos
+    st.subheader("Lista de Prospectos")
+    if not df_prospectos.empty:
+        st.dataframe(df_prospectos, use_container_width=True)
+        
+        # Botón para eliminar prospecto (solo si hay prospectos)
+        st.subheader("Eliminar Prospecto")
+        prospecto_a_eliminar = st.selectbox("Seleccionar Prospecto para eliminar", 
+                                          [""] + df_prospectos["Nombre/Razón Social"].dropna().tolist(), 
+                                          key="eliminar_prospecto")
+        
+        if prospecto_a_eliminar:
+            if st.button("🗑️ Eliminar Prospecto", type="secondary"):
+                df_prospectos = df_prospectos[df_prospectos["Nombre/Razón Social"] != prospecto_a_eliminar]
+                if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
+                    st.success("✅ Prospecto eliminado correctamente")
+                    st.rerun()
+                else:
+                    st.error("❌ Error al eliminar el prospecto")
+    else:
+        st.info("No hay prospectos registrados")
     
     # Mostrar lista de prospectos
     st.subheader("Lista de Prospectos")
@@ -702,7 +769,7 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                             # Remover el prospecto de la lista
                             df_prospectos = df_prospectos[df_prospectos["Nombre/Razón Social"] != prospecto_seleccionado]
                             
-                            if guardar_datos(df_prospectos, df_polizas):
+                            if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
                                 st.success("✅ Póliza agregada correctamente")
                                 cambiar_pestaña("🆕 Pólizas Nuevas")
                                 st.rerun()
@@ -835,8 +902,9 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
                             
                             df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
                             
-                            if guardar_datos(df_prospectos, df_polizas):
+                            if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
                                 st.success("✅ Nueva póliza agregada correctamente")
+                                st.rerun()
                             else:
                                 st.error("❌ Error al guardar la póliza")
     else:
@@ -962,7 +1030,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                             df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
                             df_cobranza_completa.loc[mask, 'Días Atraso'] = 0
                             
-                            if guardar_datos(None, None, df_cobranza_completa, None):
+                            if guardar_datos(df_cobranza=df_cobranza_completa):
                                 st.success("✅ Pago registrado correctamente")
                                 st.rerun()
                             else:
@@ -1022,8 +1090,9 @@ def mostrar_seguimiento(df_prospectos, df_seguimiento):
                         
                         df_seguimiento = pd.concat([df_seguimiento, pd.DataFrame([nuevo_seguimiento])], ignore_index=True)
                         
-                        if guardar_datos(None, None, None, df_seguimiento):
+                        if guardar_datos(df_seguimiento=df_seguimiento):
                             st.success("✅ Seguimiento guardado correctamente")
+                            st.rerun()
                             
                             # Si el estatus es "Convertido", mover a pólizas
                             if estatus == "Convertido":
