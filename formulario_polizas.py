@@ -11,6 +11,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import re
+from dateutil.relativedelta import relativedelta
 
 # Configuración de la página
 st.set_page_config(
@@ -20,15 +21,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Opciones para combobox
+# Opciones actualizadas
 OPCIONES_PRODUCTO = [
-    "GMMI", "GMMC", "API", "APE", "APC", "PPL", "OV", "PPR",
-    "EDUCACIONAL", "AHORRO", "TEMPORAL", "VG", "AUTO", "FLOTILLA", "HOGAR", "VIAJERO", "DAÑOS"
+    "GMMI", "GMMC", "API", "APE", "APC", "VPL", "OV", "PPR",
+    "EDUCACIONAL", "AHORRO", "TEMPORAL", "VG", "AUTO", "FLOTILLA", "HOGAR", "VIAJERO", "DAÑOS", "PENDIENTE"
 ]
 OPCIONES_PAGO = ["PAGO REFERENCIADO", "TRANSFERENCIA", "CARGO TDC", "CARGO TDD"]
 OPCIONES_ASEG = ["AXA", "ALLIANZ", "ATLAS", "BANORTE", "ZURICH", "GNP", "HIR", "QUALITAS"]
 OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANCOMER", "BANREGIO", "HSBC", "SANTANDER"]
 OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
+OPCIONES_MONEDA = ["MXN", "UDIS", "DLLS"]
+OPCIONES_ESTATUS_SEGUIMIENTO = ["Seguimiento", "Descartado", "Convertido"]
 
 # Inicializar estado de sesión para la pestaña activa
 if 'active_tab' not in st.session_state:
@@ -80,9 +83,9 @@ def cargar_datos():
     try:
         spreadsheet = conectar_google_sheets()
         if not spreadsheet:
-            return pd.DataFrame(), pd.DataFrame()
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
-        # Cargar hojas existentes sin intentar crearlas
+        # Cargar hojas existentes
         try:
             worksheet_prospectos = spreadsheet.worksheet("Prospectos")
             df_prospectos = pd.DataFrame(worksheet_prospectos.get_all_records())
@@ -90,7 +93,8 @@ def cargar_datos():
             st.error(f"❌ Error al cargar hoja 'Prospectos': {e}")
             df_prospectos = pd.DataFrame(columns=[
                 "Tipo Persona", "Nombre/Razón Social", "Fecha Nacimiento", "RFC", "Teléfono",
-                "Correo", "Producto", "Fecha Registro", "Fecha Contacto", "Seguimiento", "Representantes Legales"
+                "Correo", "Producto", "Fecha Registro", "Fecha Contacto", "Seguimiento", 
+                "Representantes Legales", "Referenciador", "Estatus", "Comentarios"
             ])
         
         try:
@@ -104,48 +108,97 @@ def cargar_datos():
                 "Tipo Persona", "Nombre/Razón Social", "No. Póliza", "Producto", "Inicio Vigencia",
                 "Fin Vigencia", "RFC", "Forma de Pago", "Banco", "Periodicidad", "Prima Emitida",
                 "Monto Periodo", "Aseguradora", "% Comisión", "Comisión", "Estado", "Contacto", "Dirección",
-                "Teléfono", "Correo", "Fecha Nacimiento"
+                "Teléfono", "Correo", "Fecha Nacimiento", "Moneda", "Referenciador"
             ])
         
-        return df_prospectos, df_polizas
+        try:
+            worksheet_cobranza = spreadsheet.worksheet("Cobranza")
+            df_cobranza = pd.DataFrame(worksheet_cobranza.get_all_records())
+        except Exception as e:
+            df_cobranza = pd.DataFrame(columns=[
+                "No. Póliza", "Mes Cobranza", "Monto Esperado", "Monto Pagado", 
+                "Fecha Pago", "Estatus", "Días Atraso"
+            ])
+        
+        try:
+            worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
+            df_seguimiento = pd.DataFrame(worksheet_seguimiento.get_all_records())
+        except Exception as e:
+            df_seguimiento = pd.DataFrame(columns=[
+                "Nombre/Razón Social", "Fecha Contacto", "Estatus", "Comentarios", "Fecha Registro"
+            ])
+        
+        return df_prospectos, df_polizas, df_cobranza, df_seguimiento
         
     except Exception as e:
         st.error(f"Error cargando datos: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # Función para guardar datos (invalida el cache)
-def guardar_datos(df_prospectos, df_polizas):
+def guardar_datos(df_prospectos, df_polizas, df_cobranza=None, df_seguimiento=None):
     """Guardar datos en Google Sheets e invalidar cache"""
     try:
         spreadsheet = conectar_google_sheets()
         if not spreadsheet:
             return False
         
-        # Actualizar hoja de Prospectos (usar existente)
+        # Actualizar hoja de Prospectos
         try:
             worksheet_prospectos = spreadsheet.worksheet("Prospectos")
-            # Limpiar y actualizar manteniendo formato
             worksheet_prospectos.clear()
             if not df_prospectos.empty:
-                # Preparar datos para actualizar
                 data = [df_prospectos.columns.values.tolist()] + df_prospectos.fillna('').values.tolist()
                 worksheet_prospectos.update(data, value_input_option='USER_ENTERED')
         except Exception as e:
             st.error(f"❌ Error al actualizar hoja 'Prospectos': {e}")
             return False
         
-        # Actualizar hoja de Pólizas (usar existente)
+        # Actualizar hoja de Pólizas
         try:
             worksheet_polizas = spreadsheet.worksheet("Polizas")
-            # Limpiar y actualizar manteniendo formato
             worksheet_polizas.clear()
             if not df_polizas.empty:
-                # Preparar datos para actualizar
                 data = [df_polizas.columns.values.tolist()] + df_polizas.fillna('').values.tolist()
                 worksheet_polizas.update(data, value_input_option='USER_ENTERED')
         except Exception as e:
             st.error(f"❌ Error al actualizar hoja 'Polizas': {e}")
             return False
+        
+        # Actualizar hoja de Cobranza si se proporciona
+        if df_cobranza is not None:
+            try:
+                worksheet_cobranza = spreadsheet.worksheet("Cobranza")
+                worksheet_cobranza.clear()
+                if not df_cobranza.empty:
+                    data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
+                    worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
+            except:
+                # Crear hoja si no existe
+                try:
+                    worksheet_cobranza = spreadsheet.add_worksheet(title="Cobranza", rows=1000, cols=20)
+                    if not df_cobranza.empty:
+                        data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
+                        worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
+                except Exception as e:
+                    st.error(f"❌ Error al crear/actualizar hoja 'Cobranza': {e}")
+        
+        # Actualizar hoja de Seguimiento si se proporciona
+        if df_seguimiento is not None:
+            try:
+                worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
+                worksheet_seguimiento.clear()
+                if not df_seguimiento.empty:
+                    data = [df_seguimiento.columns.values.tolist()] + df_seguimiento.fillna('').values.tolist()
+                    worksheet_seguimiento.update(data, value_input_option='USER_ENTERED')
+            except:
+                # Crear hoja si no existe
+                try:
+                    worksheet_seguimiento = spreadsheet.add_worksheet(title="Seguimiento", rows=1000, cols=20)
+                    if not df_seguimiento.empty:
+                        data = [df_seguimiento.columns.values.tolist()] + df_seguimiento.fillna('').values.tolist()
+                        worksheet_seguimiento.update(data, value_input_option='USER_ENTERED')
+                except Exception as e:
+                    st.error(f"❌ Error al crear/actualizar hoja 'Seguimiento': {e}")
         
         # Invalidar cache para forzar recarga
         st.cache_data.clear()
@@ -161,13 +214,11 @@ def validar_fecha(fecha_str):
     if not fecha_str or pd.isna(fecha_str) or fecha_str == "":
         return True, ""
     
-    # Limpiar espacios
     fecha_str = str(fecha_str).strip()
     
     patron = r'^\d{1,2}/\d{1,2}/\d{4}$'
     if re.match(patron, fecha_str):
         try:
-            # Verificar que la fecha sea válida
             dia, mes, anio = map(int, fecha_str.split('/'))
             datetime(anio, mes, dia)
             return True, ""
@@ -183,12 +234,11 @@ def fecha_actual():
 # Función para obtener pólizas próximas a vencer
 def obtener_polizas_proximas_vencer(dias_min=45, dias_max=60):
     try:
-        _, df_polizas = cargar_datos()
+        _, df_polizas, _, _ = cargar_datos()
         
         if df_polizas.empty:
             return pd.DataFrame()
         
-        # Filtrar solo pólizas vigentes
         if "Estado" in df_polizas.columns:
             df_vigentes = df_polizas[df_polizas["Estado"] == "VIGENTE"]
         else:
@@ -236,6 +286,79 @@ def obtener_polizas_proximas_vencer(dias_min=45, dias_max=60):
         st.error(f"Error al obtener pólizas próximas a vencer: {e}")
         return pd.DataFrame()
 
+# Función para calcular cobranza
+def calcular_cobranza():
+    try:
+        _, df_polizas, df_cobranza, _ = cargar_datos()
+        
+        if df_polizas.empty:
+            return pd.DataFrame()
+        
+        # Filtrar pólizas vigentes
+        df_vigentes = df_polizas[df_polizas["Estado"] == "VIGENTE"]
+        
+        if df_vigentes.empty:
+            return pd.DataFrame()
+        
+        hoy = datetime.now()
+        mes_actual = hoy.strftime("%m/%Y")
+        cobranza_mes = []
+        
+        for _, poliza in df_vigentes.iterrows():
+            no_poliza = poliza.get("No. Póliza", "")
+            periodicidad = poliza.get("Periodicidad", "")
+            monto_periodo = poliza.get("Monto Periodo", 0)
+            inicio_vigencia_str = poliza.get("Inicio Vigencia", "")
+            
+            if not all([no_poliza, periodicidad, monto_periodo, inicio_vigencia_str]):
+                continue
+            
+            try:
+                # Convertir fecha de inicio
+                inicio_vigencia = datetime.strptime(inicio_vigencia_str, "%d/%m/%Y")
+                
+                # Calcular meses desde inicio hasta hoy
+                meses_diff = (hoy.year - inicio_vigencia.year) * 12 + hoy.month - inicio_vigencia.month
+                
+                # Determinar frecuencia en meses
+                frecuencias = {
+                    "MENSUAL": 1,
+                    "TRIMESTRAL": 3,
+                    "SEMESTRAL": 6,
+                    "ANUAL": 12
+                }
+                
+                frecuencia = frecuencias.get(periodicidad, 1)
+                
+                # Verificar si este mes corresponde a un pago
+                if meses_diff % frecuencia == 0:
+                    # Verificar si ya existe registro en cobranza
+                    existe_registro = False
+                    if not df_cobranza.empty:
+                        existe_registro = ((df_cobranza["No. Póliza"] == no_poliza) & 
+                                         (df_cobranza["Mes Cobranza"] == mes_actual)).any()
+                    
+                    if not existe_registro:
+                        cobranza_mes.append({
+                            "No. Póliza": no_poliza,
+                            "Nombre/Razón Social": poliza.get("Nombre/Razón Social", ""),
+                            "Mes Cobranza": mes_actual,
+                            "Monto Esperado": float(monto_periodo) if str(monto_periodo).replace('.','').isdigit() else 0,
+                            "Monto Pagado": 0,
+                            "Fecha Pago": "",
+                            "Estatus": "Pendiente",
+                            "Días Atraso": (hoy - datetime(hoy.year, hoy.month, 1)).days
+                        })
+                        
+            except Exception as e:
+                continue
+        
+        return pd.DataFrame(cobranza_mes)
+        
+    except Exception as e:
+        st.error(f"Error al calcular cobranza: {e}")
+        return pd.DataFrame()
+
 # Función para manejar el cambio de pestaña
 def cambiar_pestaña(nombre_pestaña):
     st.session_state.active_tab = nombre_pestaña
@@ -259,10 +382,17 @@ def main():
             st.rerun()
     
     # Cargar datos iniciales
-    df_prospectos, df_polizas = cargar_datos()
+    df_prospectos, df_polizas, df_cobranza, df_seguimiento = cargar_datos()
     
     # Crear pestañas con estado de sesión
-    tab_names = ["👥 Prospectos", "📋 Póliza Prospectos", "🆕 Pólizas Nuevas", "⏰ Próximos Vencimientos"]
+    tab_names = [
+        "👥 Prospectos", 
+        "📋 Póliza Prospectos", 
+        "🆕 Pólizas Nuevas", 
+        "⏰ Próximos Vencimientos",
+        "💰 Cobranza",
+        "📞 Seguimiento"
+    ]
     
     # Crear botones para cambiar de pestaña
     cols = st.columns(len(tab_names))
@@ -283,39 +413,80 @@ def main():
         mostrar_polizas_nuevas(df_prospectos, df_polizas)
     elif st.session_state.active_tab == "⏰ Próximos Vencimientos":
         mostrar_vencimientos()
+    elif st.session_state.active_tab == "💰 Cobranza":
+        mostrar_cobranza(df_polizas, df_cobranza)
+    elif st.session_state.active_tab == "📞 Seguimiento":
+        mostrar_seguimiento(df_prospectos, df_seguimiento)
 
 # Función para mostrar la pestaña de Prospectos
 def mostrar_prospectos(df_prospectos, df_polizas):
     st.header("Gestión de Prospectos")
     
-    with st.form("form_prospectos", clear_on_submit=True):
+    # Selector para editar prospecto existente
+    if not df_prospectos.empty:
+        prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
+        prospecto_a_editar = st.selectbox("Seleccionar Prospecto para editar", [""] + prospectos_lista, key="editar_prospecto")
+        
+        if prospecto_a_editar:
+            prospecto_data = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_a_editar].iloc[0]
+            modo_edicion = True
+        else:
+            prospecto_data = {}
+            modo_edicion = False
+    else:
+        prospecto_data = {}
+        modo_edicion = False
+    
+    with st.form("form_prospectos", clear_on_submit=not modo_edicion):
         col1, col2 = st.columns(2)
         
         with col1:
-            tipo_persona = st.selectbox("Tipo Persona", OPCIONES_PERSONA, key="prospecto_tipo")
-            nombre_razon = st.text_input("Nombre/Razón Social*", key="prospecto_nombre")
+            tipo_persona = st.selectbox("Tipo Persona", OPCIONES_PERSONA, 
+                                      index=OPCIONES_PERSONA.index(prospecto_data.get("Tipo Persona", "")) 
+                                      if prospecto_data.get("Tipo Persona") in OPCIONES_PERSONA else 0,
+                                      key="prospecto_tipo")
+            nombre_razon = st.text_input("Nombre/Razón Social*", 
+                                       value=prospecto_data.get("Nombre/Razón Social", ""), 
+                                       key="prospecto_nombre")
             fecha_nacimiento = st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
+                                           value=prospecto_data.get("Fecha Nacimiento", ""),
                                            placeholder="dd/mm/yyyy",
                                            key="prospecto_nacimiento")
-            rfc = st.text_input("RFC", key="prospecto_rfc")
-            telefono = st.text_input("Teléfono", key="prospecto_telefono")
-            correo = st.text_input("Correo", key="prospecto_correo")
+            rfc = st.text_input("RFC", 
+                              value=prospecto_data.get("RFC", ""), 
+                              key="prospecto_rfc")
+            telefono = st.text_input("Teléfono", 
+                                   value=prospecto_data.get("Teléfono", ""), 
+                                   key="prospecto_telefono")
+            correo = st.text_input("Correo", 
+                                 value=prospecto_data.get("Correo", ""), 
+                                 key="prospecto_correo")
         
         with col2:
-            producto = st.selectbox("Producto", OPCIONES_PRODUCTO, key="prospecto_producto")
+            producto = st.selectbox("Producto", OPCIONES_PRODUCTO, 
+                                  index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
+                                  if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
+                                  key="prospecto_producto")
             fecha_registro = st.text_input("Fecha Registro*", 
-                                        value=fecha_actual(),
+                                        value=prospecto_data.get("Fecha Registro", fecha_actual()),
                                         placeholder="dd/mm/yyyy",
                                         key="prospecto_registro")
             fecha_contacto = st.text_input("Fecha Contacto (dd/mm/yyyy)", 
+                                         value=prospecto_data.get("Fecha Contacto", ""),
                                          placeholder="dd/mm/yyyy",
                                          key="prospecto_contacto")
             seguimiento = st.text_input("Seguimiento (dd/mm/yyyy)", 
+                                      value=prospecto_data.get("Seguimiento", ""),
                                       placeholder="dd/mm/yyyy",
                                       key="prospecto_seguimiento")
             representantes = st.text_area("Representantes Legales (separar por comas)", 
+                                        value=prospecto_data.get("Representantes Legales", ""),
                                         placeholder="Ej: Juan Pérez, María García",
                                         key="prospecto_representantes")
+            referenciador = st.text_input("Referenciador", 
+                                        value=prospecto_data.get("Referenciador", ""),
+                                        placeholder="Origen del cliente/promoción",
+                                        key="prospecto_referenciador")
         
         # Validar fechas
         fecha_errors = []
@@ -343,8 +514,12 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             for error in fecha_errors:
                 st.error(error)
         
-        submitted_prospecto = st.form_submit_button("💾 Agregar Prospecto")
-        if submitted_prospecto:
+        if modo_edicion:
+            submitted = st.form_submit_button("💾 Actualizar Prospecto")
+        else:
+            submitted = st.form_submit_button("💾 Agregar Prospecto")
+        
+        if submitted:
             if not nombre_razon:
                 st.warning("Debe completar al menos el nombre o razón social")
             elif fecha_errors:
@@ -361,13 +536,23 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     "Fecha Registro": fecha_registro if fecha_registro else fecha_actual(),
                     "Fecha Contacto": fecha_contacto if fecha_contacto else "",
                     "Seguimiento": seguimiento if seguimiento else "",
-                    "Representantes Legales": representantes
+                    "Representantes Legales": representantes,
+                    "Referenciador": referenciador
                 }
                 
-                df_prospectos = pd.concat([df_prospectos, pd.DataFrame([nuevo_prospecto])], ignore_index=True)
+                if modo_edicion:
+                    # Actualizar prospecto existente
+                    index = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_a_editar].index
+                    for key, value in nuevo_prospecto.items():
+                        df_prospectos.loc[index, key] = value
+                    mensaje = "✅ Prospecto actualizado correctamente"
+                else:
+                    # Agregar nuevo prospecto
+                    df_prospectos = pd.concat([df_prospectos, pd.DataFrame([nuevo_prospecto])], ignore_index=True)
+                    mensaje = "✅ Prospecto agregado correctamente"
+                
                 if guardar_datos(df_prospectos, df_polizas):
-                    st.success("✅ Prospecto agregado correctamente")
-                    # No hacemos rerun aquí para mantener la pestaña
+                    st.success(mensaje)
                 else:
                     st.error("❌ Error al guardar el prospecto")
     
@@ -382,7 +567,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
 def mostrar_poliza_prospectos(df_prospectos, df_polizas):
     st.header("Convertir Prospecto a Póliza")
     
-    # Seleccionar prospecto - FUERA del formulario para evitar el cambio de pestaña
+    # Seleccionar prospecto
     if not df_prospectos.empty:
         prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
         prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="poliza_prospecto")
@@ -412,6 +597,7 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                                                key="poliza_fin")
                     rfc_poliza = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="poliza_rfc")
                     forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="poliza_pago")
+                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="poliza_moneda")
                 
                 with col2:
                     banco = st.selectbox("Banco", OPCIONES_BANCO, key="poliza_banco")
@@ -422,12 +608,19 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                     pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="poliza_pagos_sub")
                     aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="poliza_aseguradora")
                     comision_porcentaje = st.text_input("% Comisión", key="poliza_comision_pct")
+                    referenciador_poliza = st.text_input("Referenciador", 
+                                                       value=prospecto_data.get("Referenciador", ""),
+                                                       placeholder="Origen del cliente/promoción",
+                                                       key="poliza_referenciador")
                 
                 col3, col4 = st.columns(2)
                 with col3:
                     estado = st.selectbox("Estado", ["VIGENTE", "CANCELADO", "TERMINADO"], key="poliza_estado")
                     contacto = st.text_input("Contacto", key="poliza_contacto")
-                    direccion = st.text_input("Dirección", key="poliza_direccion")
+                    direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
+                                            value=prospecto_data.get("Dirección", ""),
+                                            placeholder="Ej: Calle 123, CDMX, 03100",
+                                            key="poliza_direccion")
                 
                 with col4:
                     telefono_poliza = st.text_input("Teléfono", value=prospecto_data.get("Teléfono", ""), key="poliza_telefono")
@@ -499,7 +692,9 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                                 "Dirección": direccion,
                                 "Teléfono": telefono_poliza,
                                 "Correo": correo_poliza,
-                                "Fecha Nacimiento": fecha_nacimiento_poliza if fecha_nacimiento_poliza else ""
+                                "Fecha Nacimiento": fecha_nacimiento_poliza if fecha_nacimiento_poliza else "",
+                                "Moneda": moneda,
+                                "Referenciador": referenciador_poliza
                             }
                             
                             df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
@@ -509,7 +704,6 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                             
                             if guardar_datos(df_prospectos, df_polizas):
                                 st.success("✅ Póliza agregada correctamente")
-                                # Cambiar a la pestaña de Pólizas Nuevas después de guardar
                                 cambiar_pestaña("🆕 Pólizas Nuevas")
                                 st.rerun()
                             else:
@@ -557,6 +751,7 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
                     forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="nueva_poliza_pago")
                     banco = st.selectbox("Banco", OPCIONES_BANCO, key="nueva_poliza_banco")
                     periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="nueva_poliza_periodicidad")
+                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="nueva_poliza_moneda")
                 
                 with col2:
                     prima_emitida = st.text_input("Prima Total Emitida", key="nueva_poliza_prima")
@@ -565,6 +760,12 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
                     comision_porcentaje = st.text_input("% Comisión", key="nueva_poliza_comision_pct")
                     estado = st.selectbox("Estado", ["VIGENTE", "CANCELADO", "TERMINADO"], key="nueva_poliza_estado")
                     contacto = st.text_input("Contacto", key="nueva_poliza_contacto")
+                    direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
+                                            placeholder="Ej: Calle 123, CDMX, 03100",
+                                            key="nueva_poliza_direccion")
+                    referenciador = st.text_input("Referenciador", 
+                                                placeholder="Origen del cliente/promoción",
+                                                key="nueva_poliza_referenciador")
                 
                 # Validar fechas obligatorias
                 fecha_errors = []
@@ -624,17 +825,18 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
                                 "% Comisión": comision_porcentaje,
                                 "Estado": estado,
                                 "Contacto": contacto,
-                                "Dirección": cliente_data.get("Dirección", ""),
+                                "Dirección": direccion,
                                 "Teléfono": cliente_data.get("Teléfono", ""),
                                 "Correo": cliente_data.get("Correo", ""),
-                                "Fecha Nacimiento": cliente_data.get("Fecha Nacimiento", "")
+                                "Fecha Nacimiento": cliente_data.get("Fecha Nacimiento", ""),
+                                "Moneda": moneda,
+                                "Referenciador": referenciador
                             }
                             
                             df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
                             
                             if guardar_datos(df_prospectos, df_polizas):
                                 st.success("✅ Nueva póliza agregada correctamente")
-                                # No hacemos rerun para mantener la pestaña
                             else:
                                 st.error("❌ Error al guardar la póliza")
     else:
@@ -646,7 +848,6 @@ def mostrar_vencimientos():
     
     if st.button("🔄 Actualizar Lista", key="actualizar_vencimientos"):
         st.cache_data.clear()
-        # No hacemos rerun para mantener la pestaña
     
     df_vencimientos = obtener_polizas_proximas_vencer(45, 60)
     
@@ -703,6 +904,145 @@ def mostrar_vencimientos():
             st.info("No hay datos suficientes para mostrar")
     else:
         st.info("No hay pólizas que venzan en los próximos 45-60 días")
+
+# Función para mostrar la pestaña de Cobranza
+def mostrar_cobranza(df_polizas, df_cobranza):
+    st.header("💰 Cobranza")
+    
+    # Calcular cobranza del mes actual
+    df_cobranza_mes = calcular_cobranza()
+    
+    if not df_cobranza_mes.empty:
+        st.subheader("Recibos Pendientes de Pago")
+        
+        # Combinar con datos existentes de cobranza
+        if not df_cobranza.empty:
+            df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_mes]).drop_duplicates(subset=['No. Póliza', 'Mes Cobranza'], keep='last')
+        else:
+            df_cobranza_completa = df_cobranza_mes
+        
+        # Filtrar solo pendientes
+        df_pendientes = df_cobranza_completa[df_cobranza_completa['Estatus'] == 'Pendiente']
+        
+        if not df_pendientes.empty:
+            # Aplicar colores según días de atraso
+            def color_row(dias_atraso):
+                if dias_atraso >= 5 and dias_atraso <= 10:
+                    return 'background-color: #fff3cd;'  # Amarillo
+                elif dias_atraso >= 11 and dias_atraso <= 20:
+                    return 'background-color: #ffe6cc;'  # Naranja
+                elif dias_atraso > 20:
+                    return 'background-color: #f8d7da;'  # Rojo
+                else:
+                    return ''
+            
+            styled_df = df_pendientes.style.applymap(color_row, subset=['Días Atraso'])
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Formulario para registrar pagos
+            st.subheader("Registrar Pago")
+            with st.form("form_pago"):
+                poliza_pago = st.selectbox("Seleccionar Póliza", df_pendientes["No. Póliza"].tolist())
+                monto_pagado = st.number_input("Monto Pagado (MXN)", min_value=0.0, step=0.01)
+                fecha_pago = st.text_input("Fecha de Pago (dd/mm/yyyy)", value=fecha_actual(), placeholder="dd/mm/yyyy")
+                
+                if st.form_submit_button("💾 Registrar Pago"):
+                    if monto_pagado <= 0:
+                        st.warning("El monto pagado debe ser mayor a 0")
+                    else:
+                        # Validar fecha
+                        valido, error = validar_fecha(fecha_pago)
+                        if not valido:
+                            st.error(f"Fecha de pago: {error}")
+                        else:
+                            # Actualizar registro de cobranza
+                            mask = (df_cobranza_completa['No. Póliza'] == poliza_pago) & (df_cobranza_completa['Estatus'] == 'Pendiente')
+                            df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
+                            df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
+                            df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
+                            df_cobranza_completa.loc[mask, 'Días Atraso'] = 0
+                            
+                            if guardar_datos(None, None, df_cobranza_completa, None):
+                                st.success("✅ Pago registrado correctamente")
+                                st.rerun()
+                            else:
+                                st.error("❌ Error al registrar el pago")
+        else:
+            st.success("🎉 No hay recibos pendientes de pago")
+    else:
+        st.info("No hay cobranza pendiente para el mes actual")
+
+# Función para mostrar la pestaña de Seguimiento
+def mostrar_seguimiento(df_prospectos, df_seguimiento):
+    st.header("📞 Seguimiento de Prospectos")
+    
+    # Selector de prospecto
+    if not df_prospectos.empty:
+        prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
+        prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="seguimiento_prospecto")
+        
+        if prospecto_seleccionado:
+            # Buscar seguimientos existentes
+            seguimientos_existentes = pd.DataFrame()
+            if not df_seguimiento.empty:
+                seguimientos_existentes = df_seguimiento[df_seguimiento["Nombre/Razón Social"] == prospecto_seleccionado]
+            
+            with st.form("form_seguimiento", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    nueva_fecha_contacto = st.text_input("Nueva Fecha de Contacto (dd/mm/yyyy)*", 
+                                                       value=fecha_actual(),
+                                                       placeholder="dd/mm/yyyy",
+                                                       key="nueva_fecha_contacto")
+                    estatus = st.selectbox("Estatus", OPCIONES_ESTATUS_SEGUIMIENTO, key="estatus_seguimiento")
+                
+                with col2:
+                    comentarios = st.text_area("Comentarios*", 
+                                             placeholder="Anotar lo que indique el prospecto...",
+                                             key="comentarios_seguimiento")
+                
+                submitted = st.form_submit_button("💾 Guardar Seguimiento")
+                
+                if submitted:
+                    # Validar fecha
+                    valido, error = validar_fecha(nueva_fecha_contacto)
+                    if not valido:
+                        st.error(f"Fecha de contacto: {error}")
+                    elif not comentarios:
+                        st.warning("Los comentarios son obligatorios")
+                    else:
+                        nuevo_seguimiento = {
+                            "Nombre/Razón Social": prospecto_seleccionado,
+                            "Fecha Contacto": nueva_fecha_contacto,
+                            "Estatus": estatus,
+                            "Comentarios": comentarios,
+                            "Fecha Registro": fecha_actual()
+                        }
+                        
+                        df_seguimiento = pd.concat([df_seguimiento, pd.DataFrame([nuevo_seguimiento])], ignore_index=True)
+                        
+                        if guardar_datos(None, None, None, df_seguimiento):
+                            st.success("✅ Seguimiento guardado correctamente")
+                            
+                            # Si el estatus es "Convertido", mover a pólizas
+                            if estatus == "Convertido":
+                                st.info("ℹ️ El prospecto ha sido marcado como 'Convertido'. Puedes proceder a crear su póliza en la pestaña 'Póliza Prospectos'")
+                        else:
+                            st.error("❌ Error al guardar el seguimiento")
+            
+            # Mostrar historial de seguimientos
+            if not seguimientos_existentes.empty:
+                st.subheader("Historial de Seguimientos")
+                seguimientos_existentes = seguimientos_existentes.sort_values("Fecha Contacto", ascending=False)
+                st.dataframe(seguimientos_existentes, use_container_width=True)
+    else:
+        st.info("No hay prospectos registrados")
+    
+    # Mostrar todos los seguimientos
+    if not df_seguimiento.empty:
+        st.subheader("Todos los Seguimientos")
+        st.dataframe(df_seguimiento, use_container_width=True)
 
 if __name__ == "__main__":
     main()
