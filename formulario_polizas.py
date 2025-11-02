@@ -31,20 +31,46 @@ OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANCOMER", "BANREGIO",
 OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
 
 # Configuración de Google Sheets
-def conectar_google_sheets():
-    """Conectar a Google Sheets usando credenciales de Streamlit secrets"""
+@st.cache_resource(ttl=3600)  # Cache por 1 hora para la conexión
+def init_google_sheets():
+    """Inicializa la conexión con Google Sheets con manejo de errores"""
     try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        if 'google_service_account' not in st.secrets:
+            st.error("❌ No se encontró 'google_service_account' en los secrets de Streamlit")
+            return None
+        
+        creds = Credentials.from_service_account_info(
+            st.secrets["google_service_account"],
+            scopes=["https://www.googleapis.com/auth/spreadsheets", 
+                   "https://www.googleapis.com/auth/drive"]
+        )
+        
         client = gspread.authorize(creds)
+        return client
+        
+    except Exception as e:
+        st.error(f"❌ Error al autenticar con Google Sheets: {str(e)}")
+        return None
+
+# Inicializar cliente
+client = init_google_sheets()
+if client is None:
+    st.stop()
+
+# Conectar a la hoja específica
+@st.cache_resource(ttl=3600)
+def conectar_google_sheets():
+    """Conectar a la hoja base_polizas_ealc"""
+    try:
         spreadsheet = client.open("base_polizas_ealc")
         return spreadsheet
     except Exception as e:
-        st.error(f"Error conectando a Google Sheets: {e}")
+        st.error(f"❌ Error al conectar con la hoja 'base_polizas_ealc': {str(e)}")
+        st.info("ℹ️ Asegúrate de que la hoja 'base_polizas_ealc' exista y esté compartida con el servicio account")
         return None
 
-# Función para cargar datos
+# Función para cargar datos con cache
+@st.cache_data(ttl=300)  # Cache por 5 minutos
 def cargar_datos():
     """Cargar datos desde Google Sheets"""
     try:
@@ -80,9 +106,9 @@ def cargar_datos():
         st.error(f"Error cargando datos: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
-# Función para guardar datos
+# Función para guardar datos (invalida el cache)
 def guardar_datos(df_prospectos, df_polizas):
-    """Guardar datos en Google Sheets"""
+    """Guardar datos en Google Sheets e invalidar cache"""
     try:
         spreadsheet = conectar_google_sheets()
         if not spreadsheet:
@@ -108,31 +134,34 @@ def guardar_datos(df_prospectos, df_polizas):
             worksheet_polizas = spreadsheet.worksheet("Polizas")
             worksheet_polizas.update([df_polizas.columns.values.tolist()] + df_polizas.values.tolist())
         
+        # Invalidar cache para forzar recarga
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Error guardando datos: {e}")
         return False
 
-# Función para convertir fechas
-def convertir_fecha(valor):
-    try:
-        if isinstance(valor, str):
-            # Intentar con formato día/mes/año
-            try:
-                return datetime.strptime(valor, "%d/%m/%Y").strftime("%d/%m/%Y")
-            except:
-                # Intentar con formato año-mes-día
-                try:
-                    return datetime.strptime(valor, "%Y-%m-%d").strftime("%d/%m/%Y")
-                except:
-                    # Intentar con formato año-mes-día hora:minuto:segundo
-                    try:
-                        return datetime.strptime(valor, "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y")
-                    except:
-                        return valor
-        return valor
-    except:
-        return valor
+# Función para validar formato de fecha
+def validar_fecha(fecha_str):
+    """Validar que la fecha tenga formato dd/mm/yyyy"""
+    if not fecha_str:
+        return True, ""
+    
+    patron = r'^\d{1,2}/\d{1,2}/\d{4}$'
+    if re.match(patron, fecha_str):
+        try:
+            # Verificar que la fecha sea válida
+            dia, mes, anio = map(int, fecha_str.split('/'))
+            datetime(anio, mes, dia)
+            return True, ""
+        except ValueError:
+            return False, "La fecha no es válida (ejemplo: 15/03/1990)"
+    else:
+        return False, "Formato incorrecto. Use dd/mm/yyyy (ejemplo: 15/03/1990)"
+
+# Función para obtener fecha actual en formato texto
+def fecha_actual():
+    return datetime.now().strftime("%d/%m/%Y")
 
 # Función para obtener pólizas próximas a vencer
 def obtener_polizas_proximas_vencer(dias_min=45, dias_max=60):
@@ -191,6 +220,20 @@ def obtener_polizas_proximas_vencer(dias_min=45, dias_max=60):
 def main():
     st.title("📊 Gestor de Prospectos y Pólizas EALC")
     
+    # Botón para forzar recarga de datos
+    col1, col2, col3 = st.columns([3, 1, 1])
+    with col2:
+        if st.button("🔄 Recargar Datos", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+    
+    with col3:
+        if st.button("🧹 Limpiar Cache", use_container_width=True):
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            st.success("✅ Cache limpiado")
+            st.rerun()
+    
     # Cargar datos iniciales
     df_prospectos, df_polizas = cargar_datos()
     
@@ -211,36 +254,68 @@ def main():
             
             with col1:
                 tipo_persona = st.selectbox("Tipo Persona", OPCIONES_PERSONA, key="prospecto_tipo")
-                nombre_razon = st.text_input("Nombre/Razón Social", key="prospecto_nombre")
-                fecha_nacimiento = st.date_input("Fecha Nacimiento", key="prospecto_nacimiento")
+                nombre_razon = st.text_input("Nombre/Razón Social*", key="prospecto_nombre")
+                fecha_nacimiento = st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
+                                               placeholder="dd/mm/yyyy",
+                                               key="prospecto_nacimiento")
                 rfc = st.text_input("RFC", key="prospecto_rfc")
                 telefono = st.text_input("Teléfono", key="prospecto_telefono")
                 correo = st.text_input("Correo", key="prospecto_correo")
             
             with col2:
                 producto = st.selectbox("Producto", OPCIONES_PRODUCTO, key="prospecto_producto")
-                fecha_registro = st.date_input("Fecha Registro", value=datetime.now(), key="prospecto_registro")
-                fecha_contacto = st.date_input("Fecha Contacto", key="prospecto_contacto")
-                seguimiento = st.date_input("Seguimiento", key="prospecto_seguimiento")
+                fecha_registro = st.text_input("Fecha Registro*", 
+                                            value=fecha_actual(),
+                                            placeholder="dd/mm/yyyy",
+                                            key="prospecto_registro")
+                fecha_contacto = st.text_input("Fecha Contacto (dd/mm/yyyy)", 
+                                             placeholder="dd/mm/yyyy",
+                                             key="prospecto_contacto")
+                seguimiento = st.text_input("Seguimiento (dd/mm/yyyy)", 
+                                          placeholder="dd/mm/yyyy",
+                                          key="prospecto_seguimiento")
                 representantes = st.text_area("Representantes Legales (separar por comas)", 
                                             placeholder="Ej: Juan Pérez, María García",
                                             key="prospecto_representantes")
             
+            # Validar fechas
+            fecha_errors = []
+            if fecha_nacimiento:
+                valido, error = validar_fecha(fecha_nacimiento)
+                if not valido:
+                    fecha_errors.append(f"Fecha Nacimiento: {error}")
+            
+            if fecha_registro:
+                valido, error = validar_fecha(fecha_registro)
+                if not valido:
+                    fecha_errors.append(f"Fecha Registro: {error}")
+            
+            if fecha_contacto:
+                valido, error = validar_fecha(fecha_contacto)
+                if not valido:
+                    fecha_errors.append(f"Fecha Contacto: {error}")
+            
+            if fecha_errors:
+                for error in fecha_errors:
+                    st.error(error)
+            
             if st.form_submit_button("💾 Agregar Prospecto"):
                 if not nombre_razon:
                     st.warning("Debe completar al menos el nombre o razón social")
+                elif fecha_errors:
+                    st.warning("Corrija los errores en las fechas antes de guardar")
                 else:
                     nuevo_prospecto = {
                         "Tipo Persona": tipo_persona,
                         "Nombre/Razón Social": nombre_razon,
-                        "Fecha Nacimiento": fecha_nacimiento.strftime("%d/%m/%Y") if fecha_nacimiento else "",
+                        "Fecha Nacimiento": fecha_nacimiento if fecha_nacimiento else "",
                         "RFC": rfc,
                         "Teléfono": telefono,
                         "Correo": correo,
                         "Producto": producto,
-                        "Fecha Registro": fecha_registro.strftime("%d/%m/%Y"),
-                        "Fecha Contacto": fecha_contacto.strftime("%d/%m/%Y") if fecha_contacto else "",
-                        "Seguimiento": seguimiento.strftime("%d/%m/%Y") if seguimiento else "",
+                        "Fecha Registro": fecha_registro if fecha_registro else fecha_actual(),
+                        "Fecha Contacto": fecha_contacto if fecha_contacto else "",
+                        "Seguimiento": seguimiento if seguimiento else "",
                         "Representantes Legales": representantes
                     }
                     
@@ -282,8 +357,12 @@ def main():
                                               index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
                                               if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
                                               key="poliza_producto")
-                        inicio_vigencia = st.date_input("Inicio Vigencia", key="poliza_inicio")
-                        fin_vigencia = st.date_input("Fin Vigencia", key="poliza_fin")
+                        inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
+                                                      placeholder="dd/mm/yyyy",
+                                                      key="poliza_inicio")
+                        fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
+                                                   placeholder="dd/mm/yyyy",
+                                                   key="poliza_fin")
                         rfc = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="poliza_rfc")
                         forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="poliza_pago")
                     
@@ -306,15 +385,41 @@ def main():
                     with col4:
                         telefono = st.text_input("Teléfono", value=prospecto_data.get("Teléfono", ""), key="poliza_telefono")
                         correo = st.text_input("Correo", value=prospecto_data.get("Correo", ""), key="poliza_correo")
-                        fecha_nacimiento = st.date_input("Fecha Nacimiento", 
-                                                       value=datetime.strptime(prospecto_data.get("Fecha Nacimiento", "01/01/2000"), "%d/%m/%Y") 
-                                                       if prospecto_data.get("Fecha Nacimiento") and "/" in prospecto_data.get("Fecha Nacimiento") 
-                                                       else datetime(2000, 1, 1),
+                        fecha_nacimiento = st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
+                                                       value=prospecto_data.get("Fecha Nacimiento", ""),
+                                                       placeholder="dd/mm/yyyy",
                                                        key="poliza_fecha_nac")
+                    
+                    # Validar fechas obligatorias
+                    fecha_errors = []
+                    if inicio_vigencia:
+                        valido, error = validar_fecha(inicio_vigencia)
+                        if not valido:
+                            fecha_errors.append(f"Inicio Vigencia: {error}")
+                    else:
+                        fecha_errors.append("Inicio Vigencia es obligatorio")
+                    
+                    if fin_vigencia:
+                        valido, error = validar_fecha(fin_vigencia)
+                        if not valido:
+                            fecha_errors.append(f"Fin Vigencia: {error}")
+                    else:
+                        fecha_errors.append("Fin Vigencia es obligatorio")
+                    
+                    if fecha_nacimiento:
+                        valido, error = validar_fecha(fecha_nacimiento)
+                        if not valido:
+                            fecha_errors.append(f"Fecha Nacimiento: {error}")
+                    
+                    if fecha_errors:
+                        for error in fecha_errors:
+                            st.error(error)
                     
                     if st.form_submit_button("💾 Agregar Póliza"):
                         if not no_poliza:
                             st.warning("Debe completar el número de póliza")
+                        elif fecha_errors:
+                            st.warning("Corrija los errores en las fechas antes de guardar")
                         else:
                             # Verificar si ya existe el número de póliza
                             if not df_polizas.empty and str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values:
@@ -325,8 +430,8 @@ def main():
                                     "Nombre/Razón Social": prospecto_data.get("Nombre/Razón Social", ""),
                                     "No. Póliza": no_poliza,
                                     "Producto": producto,
-                                    "Inicio Vigencia": inicio_vigencia.strftime("%d/%m/%Y"),
-                                    "Fin Vigencia": fin_vigencia.strftime("%d/%m/%Y"),
+                                    "Inicio Vigencia": inicio_vigencia,
+                                    "Fin Vigencia": fin_vigencia,
                                     "RFC": rfc,
                                     "Forma de Pago": forma_pago,
                                     "Banco": banco,
@@ -342,7 +447,7 @@ def main():
                                     "Dirección": direccion,
                                     "Teléfono": telefono,
                                     "Correo": correo,
-                                    "Fecha Nacimiento": fecha_nacimiento.strftime("%d/%m/%Y")
+                                    "Fecha Nacimiento": fecha_nacimiento if fecha_nacimiento else ""
                                 }
                                 
                                 df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
@@ -383,8 +488,12 @@ def main():
                     with col1:
                         no_poliza = st.text_input("No. Póliza*", key="nueva_poliza_numero")
                         producto = st.selectbox("Producto", OPCIONES_PRODUCTO, key="nueva_poliza_producto")
-                        inicio_vigencia = st.date_input("Inicio Vigencia", key="nueva_poliza_inicio")
-                        fin_vigencia = st.date_input("Fin Vigencia", key="nueva_poliza_fin")
+                        inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
+                                                      placeholder="dd/mm/yyyy",
+                                                      key="nueva_poliza_inicio")
+                        fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
+                                                   placeholder="dd/mm/yyyy",
+                                                   key="nueva_poliza_fin")
                         forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="nueva_poliza_pago")
                         banco = st.selectbox("Banco", OPCIONES_BANCO, key="nueva_poliza_banco")
                         periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="nueva_poliza_periodicidad")
@@ -397,6 +506,26 @@ def main():
                         estado = st.selectbox("Estado", ["VIGENTE", "CANCELADO", "TERMINADO"], key="nueva_poliza_estado")
                         contacto = st.text_input("Contacto", key="nueva_poliza_contacto")
                     
+                    # Validar fechas obligatorias
+                    fecha_errors = []
+                    if inicio_vigencia:
+                        valido, error = validar_fecha(inicio_vigencia)
+                        if not valido:
+                            fecha_errors.append(f"Inicio Vigencia: {error}")
+                    else:
+                        fecha_errors.append("Inicio Vigencia es obligatorio")
+                    
+                    if fin_vigencia:
+                        valido, error = validar_fecha(fin_vigencia)
+                        if not valido:
+                            fecha_errors.append(f"Fin Vigencia: {error}")
+                    else:
+                        fecha_errors.append("Fin Vigencia es obligatorio")
+                    
+                    if fecha_errors:
+                        for error in fecha_errors:
+                            st.error(error)
+                    
                     # Botones de acción
                     col_btn1, col_btn2, col_btn3 = st.columns(3)
                     
@@ -404,6 +533,8 @@ def main():
                         if st.form_submit_button("💾 Guardar Nueva Póliza"):
                             if not no_poliza:
                                 st.warning("Debe completar el número de póliza")
+                            elif fecha_errors:
+                                st.warning("Corrija los errores en las fechas antes de guardar")
                             else:
                                 # Verificar si ya existe el número de póliza
                                 if str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values:
@@ -417,8 +548,8 @@ def main():
                                         "Nombre/Razón Social": cliente_seleccionado,
                                         "No. Póliza": no_poliza,
                                         "Producto": producto,
-                                        "Inicio Vigencia": inicio_vigencia.strftime("%d/%m/%Y"),
-                                        "Fin Vigencia": fin_vigencia.strftime("%d/%m/%Y"),
+                                        "Inicio Vigencia": inicio_vigencia,
+                                        "Fin Vigencia": fin_vigencia,
                                         "RFC": cliente_data.get("RFC", ""),
                                         "Forma de Pago": forma_pago,
                                         "Banco": banco,
@@ -450,6 +581,7 @@ def main():
         st.header("⏰ Pólizas Próximas a Vencer (45-60 días)")
         
         if st.button("🔄 Actualizar Lista", key="actualizar_vencimientos"):
+            st.cache_data.clear()
             st.rerun()
         
         df_vencimientos = obtener_polizas_proximas_vencer(45, 60)
