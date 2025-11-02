@@ -31,7 +31,7 @@ OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANCOMER", "BANREGIO",
 OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
 
 # Configuración de Google Sheets
-@st.cache_resource(ttl=3600)  # Cache por 1 hora para la conexión
+@st.cache_resource(ttl=3600)
 def init_google_sheets():
     """Inicializa la conexión con Google Sheets con manejo de errores"""
     try:
@@ -70,7 +70,7 @@ def conectar_google_sheets():
         return None
 
 # Función para cargar datos con cache
-@st.cache_data(ttl=300)  # Cache por 5 minutos
+@st.cache_data(ttl=300)
 def cargar_datos():
     """Cargar datos desde Google Sheets"""
     try:
@@ -78,11 +78,12 @@ def cargar_datos():
         if not spreadsheet:
             return pd.DataFrame(), pd.DataFrame()
         
-        # Cargar hojas
+        # Cargar hojas existentes sin intentar crearlas
         try:
             worksheet_prospectos = spreadsheet.worksheet("Prospectos")
             df_prospectos = pd.DataFrame(worksheet_prospectos.get_all_records())
-        except:
+        except Exception as e:
+            st.error(f"❌ Error al cargar hoja 'Prospectos': {e}")
             df_prospectos = pd.DataFrame(columns=[
                 "Tipo Persona", "Nombre/Razón Social", "Fecha Nacimiento", "RFC", "Teléfono",
                 "Correo", "Producto", "Fecha Registro", "Fecha Contacto", "Seguimiento", "Representantes Legales"
@@ -91,8 +92,10 @@ def cargar_datos():
         try:
             worksheet_polizas = spreadsheet.worksheet("Polizas")
             df_polizas = pd.DataFrame(worksheet_polizas.get_all_records())
-            df_polizas["No. Póliza"] = df_polizas["No. Póliza"].astype(str).str.strip()
-        except:
+            if not df_polizas.empty and "No. Póliza" in df_polizas.columns:
+                df_polizas["No. Póliza"] = df_polizas["No. Póliza"].astype(str).str.strip()
+        except Exception as e:
+            st.error(f"❌ Error al cargar hoja 'Polizas': {e}")
             df_polizas = pd.DataFrame(columns=[
                 "Tipo Persona", "Nombre/Razón Social", "No. Póliza", "Producto", "Inicio Vigencia",
                 "Fin Vigencia", "RFC", "Forma de Pago", "Banco", "Periodicidad", "Prima Emitida",
@@ -114,29 +117,36 @@ def guardar_datos(df_prospectos, df_polizas):
         if not spreadsheet:
             return False
         
-        # Actualizar hoja de Prospectos
+        # Actualizar hoja de Prospectos (usar existente)
         try:
             worksheet_prospectos = spreadsheet.worksheet("Prospectos")
+            # Limpiar y actualizar manteniendo formato
             worksheet_prospectos.clear()
-            worksheet_prospectos.update([df_prospectos.columns.values.tolist()] + df_prospectos.values.tolist())
-        except:
-            spreadsheet.add_worksheet(title="Prospectos", rows=1000, cols=20)
-            worksheet_prospectos = spreadsheet.worksheet("Prospectos")
-            worksheet_prospectos.update([df_prospectos.columns.values.tolist()] + df_prospectos.values.tolist())
+            if not df_prospectos.empty:
+                # Preparar datos para actualizar
+                data = [df_prospectos.columns.values.tolist()] + df_prospectos.fillna('').values.tolist()
+                worksheet_prospectos.update(data, value_input_option='USER_ENTERED')
+        except Exception as e:
+            st.error(f"❌ Error al actualizar hoja 'Prospectos': {e}")
+            return False
         
-        # Actualizar hoja de Pólizas
+        # Actualizar hoja de Pólizas (usar existente)
         try:
             worksheet_polizas = spreadsheet.worksheet("Polizas")
+            # Limpiar y actualizar manteniendo formato
             worksheet_polizas.clear()
-            worksheet_polizas.update([df_polizas.columns.values.tolist()] + df_polizas.values.tolist())
-        except:
-            spreadsheet.add_worksheet(title="Polizas", rows=1000, cols=25)
-            worksheet_polizas = spreadsheet.worksheet("Polizas")
-            worksheet_polizas.update([df_polizas.columns.values.tolist()] + df_polizas.values.tolist())
+            if not df_polizas.empty:
+                # Preparar datos para actualizar
+                data = [df_polizas.columns.values.tolist()] + df_polizas.fillna('').values.tolist()
+                worksheet_polizas.update(data, value_input_option='USER_ENTERED')
+        except Exception as e:
+            st.error(f"❌ Error al actualizar hoja 'Polizas': {e}")
+            return False
         
         # Invalidar cache para forzar recarga
         st.cache_data.clear()
         return True
+        
     except Exception as e:
         st.error(f"Error guardando datos: {e}")
         return False
@@ -144,8 +154,11 @@ def guardar_datos(df_prospectos, df_polizas):
 # Función para validar formato de fecha
 def validar_fecha(fecha_str):
     """Validar que la fecha tenga formato dd/mm/yyyy"""
-    if not fecha_str:
+    if not fecha_str or pd.isna(fecha_str) or fecha_str == "":
         return True, ""
+    
+    # Limpiar espacios
+    fecha_str = str(fecha_str).strip()
     
     patron = r'^\d{1,2}/\d{1,2}/\d{4}$'
     if re.match(patron, fecha_str):
@@ -172,7 +185,10 @@ def obtener_polizas_proximas_vencer(dias_min=45, dias_max=60):
             return pd.DataFrame()
         
         # Filtrar solo pólizas vigentes
-        df_vigentes = df_polizas[df_polizas["Estado"] == "VIGENTE"]
+        if "Estado" in df_polizas.columns:
+            df_vigentes = df_polizas[df_polizas["Estado"] == "VIGENTE"]
+        else:
+            df_vigentes = pd.DataFrame()
         
         if df_vigentes.empty:
             return pd.DataFrame()
@@ -295,11 +311,17 @@ def main():
                 if not valido:
                     fecha_errors.append(f"Fecha Contacto: {error}")
             
+            if seguimiento:
+                valido, error = validar_fecha(seguimiento)
+                if not valido:
+                    fecha_errors.append(f"Seguimiento: {error}")
+            
             if fecha_errors:
                 for error in fecha_errors:
                     st.error(error)
             
-            if st.form_submit_button("💾 Agregar Prospecto"):
+            submitted_prospecto = st.form_submit_button("💾 Agregar Prospecto")
+            if submitted_prospecto:
                 if not nombre_razon:
                     st.warning("Debe completar al menos el nombre o razón social")
                 elif fecha_errors:
@@ -337,7 +359,7 @@ def main():
     with tab2:
         st.header("Convertir Prospecto a Póliza")
         
-        # Seleccionar prospecto
+        # Seleccionar prospecto - FUERA del formulario para evitar el cambio de pestaña
         if not df_prospectos.empty:
             prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
             prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="poliza_prospecto")
@@ -347,13 +369,15 @@ def main():
                 prospecto_data = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado].iloc[0]
                 
                 with st.form("form_poliza_prospecto"):
+                    st.subheader(f"Creando Póliza para: {prospecto_seleccionado}")
+                    
                     col1, col2 = st.columns(2)
                     
                     with col1:
                         st.text_input("Tipo Persona", value=prospecto_data.get("Tipo Persona", ""), key="poliza_tipo", disabled=True)
                         st.text_input("Nombre/Razón Social", value=prospecto_data.get("Nombre/Razón Social", ""), key="poliza_nombre", disabled=True)
                         no_poliza = st.text_input("No. Póliza*", key="poliza_numero")
-                        producto = st.selectbox("Producto", OPCIONES_PRODUCTO, 
+                        producto_poliza = st.selectbox("Producto", OPCIONES_PRODUCTO, 
                                               index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
                                               if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
                                               key="poliza_producto")
@@ -363,7 +387,7 @@ def main():
                         fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
                                                    placeholder="dd/mm/yyyy",
                                                    key="poliza_fin")
-                        rfc = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="poliza_rfc")
+                        rfc_poliza = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="poliza_rfc")
                         forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="poliza_pago")
                     
                     with col2:
@@ -383,9 +407,9 @@ def main():
                         direccion = st.text_input("Dirección", key="poliza_direccion")
                     
                     with col4:
-                        telefono = st.text_input("Teléfono", value=prospecto_data.get("Teléfono", ""), key="poliza_telefono")
-                        correo = st.text_input("Correo", value=prospecto_data.get("Correo", ""), key="poliza_correo")
-                        fecha_nacimiento = st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
+                        telefono_poliza = st.text_input("Teléfono", value=prospecto_data.get("Teléfono", ""), key="poliza_telefono")
+                        correo_poliza = st.text_input("Correo", value=prospecto_data.get("Correo", ""), key="poliza_correo")
+                        fecha_nacimiento_poliza = st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
                                                        value=prospecto_data.get("Fecha Nacimiento", ""),
                                                        placeholder="dd/mm/yyyy",
                                                        key="poliza_fecha_nac")
@@ -406,8 +430,8 @@ def main():
                     else:
                         fecha_errors.append("Fin Vigencia es obligatorio")
                     
-                    if fecha_nacimiento:
-                        valido, error = validar_fecha(fecha_nacimiento)
+                    if fecha_nacimiento_poliza:
+                        valido, error = validar_fecha(fecha_nacimiento_poliza)
                         if not valido:
                             fecha_errors.append(f"Fecha Nacimiento: {error}")
                     
@@ -415,24 +439,29 @@ def main():
                         for error in fecha_errors:
                             st.error(error)
                     
-                    if st.form_submit_button("💾 Agregar Póliza"):
+                    submitted_poliza = st.form_submit_button("💾 Agregar Póliza")
+                    if submitted_poliza:
                         if not no_poliza:
                             st.warning("Debe completar el número de póliza")
                         elif fecha_errors:
                             st.warning("Corrija los errores en las fechas antes de guardar")
                         else:
                             # Verificar si ya existe el número de póliza
-                            if not df_polizas.empty and str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values:
+                            poliza_existe = False
+                            if not df_polizas.empty and "No. Póliza" in df_polizas.columns:
+                                poliza_existe = str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values
+                            
+                            if poliza_existe:
                                 st.warning("⚠️ Este número de póliza ya existe")
                             else:
                                 nueva_poliza = {
                                     "Tipo Persona": prospecto_data.get("Tipo Persona", ""),
                                     "Nombre/Razón Social": prospecto_data.get("Nombre/Razón Social", ""),
                                     "No. Póliza": no_poliza,
-                                    "Producto": producto,
+                                    "Producto": producto_poliza,
                                     "Inicio Vigencia": inicio_vigencia,
                                     "Fin Vigencia": fin_vigencia,
-                                    "RFC": rfc,
+                                    "RFC": rfc_poliza,
                                     "Forma de Pago": forma_pago,
                                     "Banco": banco,
                                     "Periodicidad": periodicidad,
@@ -445,9 +474,9 @@ def main():
                                     "Estado": estado,
                                     "Contacto": contacto,
                                     "Dirección": direccion,
-                                    "Teléfono": telefono,
-                                    "Correo": correo,
-                                    "Fecha Nacimiento": fecha_nacimiento if fecha_nacimiento else ""
+                                    "Teléfono": telefono_poliza,
+                                    "Correo": correo_poliza,
+                                    "Fecha Nacimiento": fecha_nacimiento_poliza if fecha_nacimiento_poliza else ""
                                 }
                                 
                                 df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
@@ -468,7 +497,7 @@ def main():
         st.header("Gestión de Pólizas para Clientes Existentes")
         
         # Seleccionar cliente existente
-        if not df_polizas.empty:
+        if not df_polizas.empty and "Nombre/Razón Social" in df_polizas.columns:
             clientes_unicos = df_polizas["Nombre/Razón Social"].dropna().unique().tolist()
             cliente_seleccionado = st.selectbox("Seleccionar Cliente", [""] + clientes_unicos, key="cliente_existente")
             
@@ -476,8 +505,14 @@ def main():
                 # Mostrar pólizas existentes del cliente
                 st.subheader(f"Pólizas existentes de {cliente_seleccionado}")
                 polizas_cliente = df_polizas[df_polizas["Nombre/Razón Social"] == cliente_seleccionado]
-                st.dataframe(polizas_cliente[["No. Póliza", "Producto", "Aseguradora", "Fin Vigencia", "Estado"]], 
-                           use_container_width=True)
+                
+                columnas_mostrar = ["No. Póliza", "Producto", "Aseguradora", "Fin Vigencia", "Estado"]
+                columnas_disponibles = [col for col in columnas_mostrar if col in polizas_cliente.columns]
+                
+                if columnas_disponibles:
+                    st.dataframe(polizas_cliente[columnas_disponibles], use_container_width=True)
+                else:
+                    st.info("No hay columnas disponibles para mostrar")
                 
                 # Formulario para nueva póliza
                 st.subheader("Agregar Nueva Póliza")
@@ -530,18 +565,26 @@ def main():
                     col_btn1, col_btn2, col_btn3 = st.columns(3)
                     
                     with col_btn1:
-                        if st.form_submit_button("💾 Guardar Nueva Póliza"):
+                        submitted_nueva_poliza = st.form_submit_button("💾 Guardar Nueva Póliza")
+                        if submitted_nueva_poliza:
                             if not no_poliza:
                                 st.warning("Debe completar el número de póliza")
                             elif fecha_errors:
                                 st.warning("Corrija los errores en las fechas antes de guardar")
                             else:
                                 # Verificar si ya existe el número de póliza
-                                if str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values:
+                                poliza_existe = False
+                                if "No. Póliza" in df_polizas.columns:
+                                    poliza_existe = str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values
+                                
+                                if poliza_existe:
                                     st.warning("⚠️ Este número de póliza ya existe")
                                 else:
                                     # Obtener datos básicos del cliente
-                                    cliente_data = polizas_cliente.iloc[0]
+                                    if not polizas_cliente.empty:
+                                        cliente_data = polizas_cliente.iloc[0]
+                                    else:
+                                        cliente_data = {}
                                     
                                     nueva_poliza = {
                                         "Tipo Persona": cliente_data.get("Tipo Persona", ""),
@@ -590,45 +633,53 @@ def main():
             st.success(f"📊 Se encontraron {len(df_vencimientos)} pólizas próximas a vencer")
             
             # Mostrar tabla con estilo condicional
-            styled_df = df_vencimientos[["Nombre/Razón Social", "No. Póliza", "Producto", "Fin Vigencia", "Días Restantes"]].copy()
+            columnas_mostrar = ["Nombre/Razón Social", "No. Póliza", "Producto", "Fin Vigencia", "Días Restantes"]
+            columnas_disponibles = [col for col in columnas_mostrar if col in df_vencimientos.columns]
             
-            # Aplicar estilo condicional
-            def highlight_days(val):
-                if val <= 50:
-                    return 'background-color: #fff3cd; color: #856404;'
-                return ''
-            
-            styled_df = styled_df.style.applymap(highlight_days, subset=['Días Restantes'])
-            
-            st.dataframe(styled_df, use_container_width=True)
-            
-            # Detalles de pólizas seleccionadas
-            st.subheader("Detalles de Póliza")
-            polizas_lista = df_vencimientos["No. Póliza"].tolist()
-            poliza_seleccionada = st.selectbox("Seleccionar Póliza para ver detalles", polizas_lista, key="detalle_poliza")
-            
-            if poliza_seleccionada:
-                poliza_detalle = df_vencimientos[df_vencimientos["No. Póliza"] == poliza_seleccionada].iloc[0]
+            if columnas_disponibles:
+                styled_df = df_vencimientos[columnas_disponibles].copy()
                 
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write("**Información General:**")
-                    st.write(f"**Cliente:** {poliza_detalle.get('Nombre/Razón Social', '')}")
-                    st.write(f"**No. Póliza:** {poliza_detalle.get('No. Póliza', '')}")
-                    st.write(f"**Producto:** {poliza_detalle.get('Producto', '')}")
-                    st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', '')}")
-                    st.write(f"**Estado:** {poliza_detalle.get('Estado', '')}")
-                
-                with col2:
-                    st.write("**Fechas:**")
-                    st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', '')}")
-                    st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin Vigencia', '')}")
-                    st.write(f"**Días Restantes:** {poliza_detalle.get('Días Restantes', '')}")
+                # Aplicar estilo condicional si tenemos la columna de días
+                if "Días Restantes" in styled_df.columns:
+                    def highlight_days(row):
+                        if row['Días Restantes'] <= 50:
+                            return ['background-color: #fff3cd; color: #856404;'] * len(row)
+                        return [''] * len(row)
                     
-                    st.write("**Datos de Contacto:**")
-                    st.write(f"**Teléfono:** {poliza_detalle.get('Teléfono', '')}")
-                    st.write(f"**Correo:** {poliza_detalle.get('Correo', '')}")
+                    styled_df = styled_df.style.apply(highlight_days, axis=1)
+                
+                st.dataframe(styled_df, use_container_width=True)
+                
+                # Detalles de pólizas seleccionadas
+                st.subheader("Detalles de Póliza")
+                if "No. Póliza" in df_vencimientos.columns:
+                    polizas_lista = df_vencimientos["No. Póliza"].tolist()
+                    poliza_seleccionada = st.selectbox("Seleccionar Póliza para ver detalles", polizas_lista, key="detalle_poliza")
+                    
+                    if poliza_seleccionada:
+                        poliza_detalle = df_vencimientos[df_vencimientos["No. Póliza"] == poliza_seleccionada].iloc[0]
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write("**Información General:**")
+                            st.write(f"**Cliente:** {poliza_detalle.get('Nombre/Razón Social', '')}")
+                            st.write(f"**No. Póliza:** {poliza_detalle.get('No. Póliza', '')}")
+                            st.write(f"**Producto:** {poliza_detalle.get('Producto', '')}")
+                            st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', '')}")
+                            st.write(f"**Estado:** {poliza_detalle.get('Estado', '')}")
+                        
+                        with col2:
+                            st.write("**Fechas:**")
+                            st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', '')}")
+                            st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin Vigencia', '')}")
+                            st.write(f"**Días Restantes:** {poliza_detalle.get('Días Restantes', '')}")
+                            
+                            st.write("**Datos de Contacto:**")
+                            st.write(f"**Teléfono:** {poliza_detalle.get('Teléfono', '')}")
+                            st.write(f"**Correo:** {poliza_detalle.get('Correo', '')}")
+            else:
+                st.info("No hay datos suficientes para mostrar")
         else:
             st.info("No hay pólizas que venzan en los próximos 45-60 días")
 
