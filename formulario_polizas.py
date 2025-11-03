@@ -404,7 +404,7 @@ def cambiar_pestaña(nombre_pestaña):
 def mostrar_prospectos(df_prospectos, df_polizas):
     st.header("Gestión de Prospectos")
 
-    # Inicializar estado para la edición
+    # --- Inicializar estado para la edición ---
     if 'modo_edicion_prospectos' not in st.session_state:
         st.session_state.modo_edicion_prospectos = False
     if 'prospecto_editando' not in st.session_state:
@@ -412,30 +412,30 @@ def mostrar_prospectos(df_prospectos, df_polizas):
     if 'prospecto_data' not in st.session_state:
         st.session_state.prospecto_data = {}
 
-    # Selector para editar prospecto existente
+    # --- Selector para editar prospecto existente ---
     if not df_prospectos.empty:
         prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
-        
-        # Crear clave única para el selectbox
+
         prospecto_seleccionado = st.selectbox(
             "Seleccionar Prospecto para editar", 
             [""] + prospectos_lista, 
             key="select_editar_prospecto"
         )
 
-        # Botón para cargar datos del prospecto seleccionado
-        if prospecto_seleccionado:
+        if prospecto_seleccionado != "":
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
                 if st.button("📝 Cargar Datos para Editar", use_container_width=True):
                     st.session_state.prospecto_editando = prospecto_seleccionado
                     st.session_state.modo_edicion_prospectos = True
+
                     # Cargar datos del prospecto seleccionado
                     prospecto_data = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado].iloc[0]
                     st.session_state.prospecto_data = prospecto_data.to_dict()
+
                     st.rerun()
-            
-            # Mostrar información del prospecto seleccionado (solo lectura)
+                    st.stop()
+
             if st.session_state.prospecto_editando == prospecto_seleccionado:
                 st.info(f"**Editando:** {prospecto_seleccionado}")
         else:
@@ -445,7 +445,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 st.session_state.prospecto_editando = None
                 st.session_state.prospecto_data = {}
 
-    # Si estamos en modo edición, mostrar botón para cancelar
+    # --- Botón para cancelar edición ---
     if st.session_state.modo_edicion_prospectos:
         if st.button("❌ Cancelar Edición", key="btn_cancelar_edicion"):
             st.session_state.modo_edicion_prospectos = False
@@ -453,117 +453,116 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_data = {}
             st.rerun()
 
-    # Usar datos almacenados en session_state
+    # --- Usar datos almacenados en session_state ---
     prospecto_data = st.session_state.prospecto_data
+    key_prefix = "edit_" if st.session_state.modo_edicion_prospectos else "new_"
 
     with st.form("form_prospectos", clear_on_submit=False):
         st.subheader("📝 Formulario de Prospecto")
-        
+
         if st.session_state.modo_edicion_prospectos:
             st.info(f"Editando: **{st.session_state.prospecto_editando}**")
-        
+
         col1, col2 = st.columns(2)
 
         with col1:
-            # Determinar índice para Tipo Persona
             tipo_persona_index = 0
             if prospecto_data.get("Tipo Persona") in OPCIONES_PERSONA:
                 tipo_persona_index = OPCIONES_PERSONA.index(prospecto_data.get("Tipo Persona"))
-            
+
             tipo_persona = st.selectbox(
                 "Tipo Persona", 
                 OPCIONES_PERSONA,
                 index=tipo_persona_index,
-                key="prospecto_tipo"
+                key=f"{key_prefix}prospecto_tipo"
             )
-            
+
             nombre_razon = st.text_input(
                 "Nombre/Razón Social*", 
                 value=prospecto_data.get("Nombre/Razón Social", ""), 
-                key="prospecto_nombre"
+                key=f"{key_prefix}prospecto_nombre"
             )
-            
+
             fecha_nacimiento = st.text_input(
                 "Fecha Nacimiento (dd/mm/yyyy)", 
                 value=prospecto_data.get("Fecha Nacimiento", ""),
                 placeholder="dd/mm/yyyy",
-                key="prospecto_nacimiento"
+                key=f"{key_prefix}prospecto_nacimiento"
             )
-            
+
             rfc = st.text_input(
                 "RFC", 
                 value=prospecto_data.get("RFC", ""), 
-                key="prospecto_rfc"
+                key=f"{key_prefix}prospecto_rfc"
             )
-            
+
             telefono = st.text_input(
                 "Teléfono", 
                 value=prospecto_data.get("Teléfono", ""), 
-                key="prospecto_telefono"
+                key=f"{key_prefix}prospecto_telefono"
             )
-            
+
             correo = st.text_input(
                 "Correo", 
                 value=prospecto_data.get("Correo", ""), 
-                key="prospecto_correo"
+                key=f"{key_prefix}prospecto_correo"
             )
 
         with col2:
-            # Determinar índice para Producto
             producto_index = 0
             if prospecto_data.get("Producto") in OPCIONES_PRODUCTO:
                 producto_index = OPCIONES_PRODUCTO.index(prospecto_data.get("Producto"))
-            
+
             producto = st.selectbox(
                 "Producto", 
                 OPCIONES_PRODUCTO,
                 index=producto_index,
-                key="prospecto_producto"
+                key=f"{key_prefix}prospecto_producto"
             )
-            
+
             fecha_registro = st.text_input(
                 "Fecha Registro*", 
                 value=prospecto_data.get("Fecha Registro", fecha_actual()),
                 placeholder="dd/mm/yyyy",
-                key="prospecto_registro"
+                key=f"{key_prefix}prospecto_registro"
             )
-            
+
             fecha_contacto = st.text_input(
                 "Fecha Contacto (dd/mm/yyyy)", 
                 value=prospecto_data.get("Fecha Contacto", ""),
                 placeholder="dd/mm/yyyy",
-                key="prospecto_contacto"
+                key=f"{key_prefix}prospecto_contacto"
             )
-            
+
             seguimiento = st.text_input(
                 "Seguimiento (dd/mm/yyyy)", 
                 value=prospecto_data.get("Seguimiento", ""),
                 placeholder="dd/mm/yyyy",
-                key="prospecto_seguimiento"
+                key=f"{key_prefix}prospecto_seguimiento"
             )
-            
+
             representantes = st.text_area(
                 "Representantes Legales (separar por comas)", 
                 value=prospecto_data.get("Representantes Legales", ""),
                 placeholder="Ej: Juan Pérez, María García",
-                key="prospecto_representantes"
+                key=f"{key_prefix}prospecto_representantes"
             )
-            
+
             referenciador = st.text_input(
                 "Referenciador", 
                 value=prospecto_data.get("Referenciador", ""),
                 placeholder="Origen del cliente/promoción",
-                key="prospecto_referenciador"
+                key=f"{key_prefix}prospecto_referenciador"
             )
-            
+
             direccion = st.text_input(
                 "Dirección", 
                 value=prospecto_data.get("Dirección", ""),
                 placeholder="Ej: Calle 123, CDMX, 03100",
-                key="prospecto_direccion"
+                key=f"{key_prefix}prospecto_direccion"
             )
 
-        # Validar fechas
+        # --- Validación de fechas ---
         fecha_errors = []
         if fecha_nacimiento:
             valido, error = validar_fecha(fecha_nacimiento)
@@ -589,7 +588,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             for error in fecha_errors:
                 st.error(error)
 
-        # Botones de acción
+        # --- Botones de acción ---
         col_b1, col_b2 = st.columns(2)
 
         with col_b1:
@@ -606,6 +605,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_data = {}
                     st.rerun()
 
+        # --- Guardado de datos ---
         if submitted:
             if not nombre_razon:
                 st.warning("Debe completar al menos el nombre o razón social")
@@ -634,8 +634,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     for key, value in nuevo_prospecto.items():
                         df_prospectos.loc[index, key] = value
                     mensaje = "✅ Prospecto actualizado correctamente"
-
-                    # Salir del modo edición después de guardar
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_editando = None
                     st.session_state.prospecto_data = {}
@@ -650,10 +648,9 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 else:
                     st.error("❌ Error al guardar el prospecto")
 
-    # Mostrar lista de prospectos
+    # --- Mostrar lista de prospectos ---
     st.subheader("📋 Lista de Prospectos")
     if not df_prospectos.empty:
-        # Mostrar columnas más relevantes
         columnas_mostrar = [
             "Nombre/Razón Social", "Producto", "Teléfono", "Correo", 
             "Fecha Registro", "Referenciador"
@@ -664,20 +661,18 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.dataframe(df_prospectos[columnas_disponibles], use_container_width=True)
         else:
             st.dataframe(df_prospectos, use_container_width=True)
-            
-        # Estadísticas rápidas
+
+        # --- Estadísticas rápidas ---
         st.subheader("📊 Estadísticas")
         col_stats1, col_stats2, col_stats3 = st.columns(3)
         with col_stats1:
             st.metric("Total Prospectos", len(df_prospectos))
         with col_stats2:
             if "Producto" in df_prospectos.columns:
-                productos_unicos = df_prospectos["Producto"].nunique()
-                st.metric("Productos Diferentes", productos_unicos)
+                st.metric("Productos Diferentes", df_prospectos["Producto"].nunique())
         with col_stats3:
             if "Fecha Registro" in df_prospectos.columns:
                 try:
-                    # Intentar contar prospectos del mes actual
                     df_prospectos['Fecha Registro DT'] = pd.to_datetime(df_prospectos['Fecha Registro'], dayfirst=True, errors='coerce')
                     mes_actual = datetime.now().month
                     prospectos_mes = len(df_prospectos[df_prospectos['Fecha Registro DT'].dt.month == mes_actual])
@@ -686,6 +681,8 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.metric("Prospectos este Mes", "N/A")
     else:
         st.info("No hay prospectos registrados")
+
+
 # Función para mostrar la pestaña de Póliza Prospectos
 def mostrar_poliza_prospectos(df_prospectos, df_polizas):
     st.header("Convertir Prospecto a Póliza")
@@ -1257,5 +1254,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
