@@ -412,20 +412,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
     if 'prospecto_data' not in st.session_state:
         st.session_state.prospecto_data = {}
 
-    # Lista de keys para los campos del formulario
-    form_keys = [
-        "prospecto_tipo", "prospecto_nombre", "prospecto_nacimiento",
-        "prospecto_rfc", "prospecto_telefono", "prospecto_correo",
-        "prospecto_producto", "prospecto_registro", "prospecto_contacto",
-        "prospecto_seguimiento", "prospecto_representantes",
-        "prospecto_referenciador", "prospecto_direccion"
-    ]
-
-    # Inicializar las keys de inputs si no existen
-    for key in form_keys:
-        if key not in st.session_state:
-            st.session_state[key] = ""
-
     # --- Selector para editar prospecto existente ---
     if not df_prospectos.empty:
         prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
@@ -439,7 +425,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         if prospecto_seleccionado:
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                if st.button("📝 Cargar Datos para Editar", use_container_width=True):
+                if st.button("📝 Cargar Datos para Editar", use_container_width=True, key="btn_cargar_datos"):
                     # Buscar y cargar datos del prospecto
                     fila = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado]
                     if not fila.empty:
@@ -447,28 +433,11 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                         st.session_state.prospecto_data = fila.to_dict()
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
-                        
-                        # Asignar valores a los campos del formulario
-                        st.session_state["prospecto_tipo"] = fila.get("Tipo Persona", "")
-                        st.session_state["prospecto_nombre"] = fila.get("Nombre/Razón Social", "")
-                        st.session_state["prospecto_nacimiento"] = fila.get("Fecha Nacimiento", "")
-                        st.session_state["prospecto_rfc"] = fila.get("RFC", "")
-                        st.session_state["prospecto_telefono"] = fila.get("Teléfono", "")
-                        st.session_state["prospecto_correo"] = fila.get("Correo", "")
-                        st.session_state["prospecto_producto"] = fila.get("Producto", "")
-                        st.session_state["prospecto_registro"] = fila.get("Fecha Registro", fecha_actual())
-                        st.session_state["prospecto_contacto"] = fila.get("Fecha Contacto", "")
-                        st.session_state["prospecto_seguimiento"] = fila.get("Seguimiento", "")
-                        st.session_state["prospecto_representantes"] = fila.get("Representantes Legales", "")
-                        st.session_state["prospecto_referenciador"] = fila.get("Referenciador", "")
-                        st.session_state["prospecto_direccion"] = fila.get("Dirección", "")
                         st.rerun()
 
             with col_btn2:
-                if st.button("❌ Limpiar selección", use_container_width=True):
-                    # Limpiar todo el estado
-                    for key in form_keys:
-                        st.session_state[key] = ""
+                if st.button("❌ Limpiar selección", use_container_width=True, key="btn_limpiar_seleccion"):
+                    # Limpiar estado
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
@@ -477,29 +446,19 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             # Mostrar información del prospecto seleccionado
             if st.session_state.prospecto_editando == prospecto_seleccionado:
                 st.info(f"**Editando:** {prospecto_seleccionado}")
-        else:
-            # Si se selecciona opción vacía, limpiar estado
-            if st.session_state.modo_edicion_prospectos:
-                for key in form_keys:
-                    st.session_state[key] = ""
-                st.session_state.prospecto_editando = None
-                st.session_state.modo_edicion_prospectos = False
-                st.session_state.prospecto_data = {}
     else:
         st.info("No hay prospectos registrados")
 
-    # --- Botón para cancelar edición (fuera del formulario) ---
+    # --- Botón para cancelar edición ---
     if st.session_state.modo_edicion_prospectos:
         if st.button("❌ Cancelar Edición", key="btn_cancelar_edicion_global"):
-            for key in form_keys:
-                st.session_state[key] = ""
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
             st.rerun()
 
     # --- FORMULARIO PRINCIPAL ---
-    with st.form("form_prospectos", clear_on_submit=False):
+    with st.form("form_prospectos", clear_on_submit=True):
         st.subheader("📝 Formulario de Prospecto")
         
         # Mostrar información de edición
@@ -509,92 +468,120 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         col1, col2 = st.columns(2)
 
         with col1:
-            # Tipo Persona
-            tipo_persona_val = st.session_state.get("prospecto_tipo", "")
+            # Tipo Persona - usar valor actual o vacío
+            tipo_persona_val = st.session_state.prospecto_data.get("Tipo Persona", "")
             tipo_persona_index = OPCIONES_PERSONA.index(tipo_persona_val) if tipo_persona_val in OPCIONES_PERSONA else 0
-            st.selectbox("Tipo Persona", OPCIONES_PERSONA, index=tipo_persona_index, key="prospecto_tipo")
+            tipo_persona = st.selectbox(
+                "Tipo Persona", 
+                OPCIONES_PERSONA, 
+                index=tipo_persona_index
+            )
 
             # Nombre/Razón Social
-            st.text_input("Nombre/Razón Social*", key="prospecto_nombre")
+            nombre_razon = st.text_input(
+                "Nombre/Razón Social*", 
+                value=st.session_state.prospecto_data.get("Nombre/Razón Social", "")
+            )
 
             # Fecha Nacimiento
-            st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
-                         placeholder="dd/mm/yyyy", 
-                         key="prospecto_nacimiento")
+            fecha_nacimiento = st.text_input(
+                "Fecha Nacimiento (dd/mm/yyyy)", 
+                value=st.session_state.prospecto_data.get("Fecha Nacimiento", ""),
+                placeholder="dd/mm/yyyy"
+            )
 
             # RFC
-            st.text_input("RFC", key="prospecto_rfc")
+            rfc = st.text_input(
+                "RFC", 
+                value=st.session_state.prospecto_data.get("RFC", "")
+            )
 
             # Teléfono
-            st.text_input("Teléfono", key="prospecto_telefono")
+            telefono = st.text_input(
+                "Teléfono", 
+                value=st.session_state.prospecto_data.get("Teléfono", "")
+            )
 
             # Correo
-            st.text_input("Correo", key="prospecto_correo")
+            correo = st.text_input(
+                "Correo", 
+                value=st.session_state.prospecto_data.get("Correo", "")
+            )
 
         with col2:
             # Producto
-            producto_val = st.session_state.get("prospecto_producto", "")
+            producto_val = st.session_state.prospecto_data.get("Producto", "")
             producto_index = OPCIONES_PRODUCTO.index(producto_val) if producto_val in OPCIONES_PRODUCTO else 0
-            st.selectbox("Producto", OPCIONES_PRODUCTO, index=producto_index, key="prospecto_producto")
+            producto = st.selectbox(
+                "Producto", 
+                OPCIONES_PRODUCTO, 
+                index=producto_index
+            )
 
             # Fecha Registro
-            st.text_input("Fecha Registro*", 
-                         placeholder="dd/mm/yyyy", 
-                         key="prospecto_registro")
+            fecha_registro = st.text_input(
+                "Fecha Registro*", 
+                value=st.session_state.prospecto_data.get("Fecha Registro", fecha_actual()),
+                placeholder="dd/mm/yyyy"
+            )
 
             # Fecha Contacto
-            st.text_input("Fecha Contacto (dd/mm/yyyy)", 
-                         placeholder="dd/mm/yyyy", 
-                         key="prospecto_contacto")
+            fecha_contacto = st.text_input(
+                "Fecha Contacto (dd/mm/yyyy)", 
+                value=st.session_state.prospecto_data.get("Fecha Contacto", ""),
+                placeholder="dd/mm/yyyy"
+            )
 
             # Seguimiento
-            st.text_input("Seguimiento (dd/mm/yyyy)", 
-                         placeholder="dd/mm/yyyy", 
-                         key="prospecto_seguimiento")
+            seguimiento = st.text_input(
+                "Seguimiento (dd/mm/yyyy)", 
+                value=st.session_state.prospecto_data.get("Seguimiento", ""),
+                placeholder="dd/mm/yyyy"
+            )
 
             # Representantes Legales
-            st.text_area("Representantes Legales (separar por comas)", 
-                        placeholder="Ej: Juan Pérez, María García", 
-                        key="prospecto_representantes")
+            representantes = st.text_area(
+                "Representantes Legales (separar por comas)", 
+                value=st.session_state.prospecto_data.get("Representantes Legales", ""),
+                placeholder="Ej: Juan Pérez, María García"
+            )
 
             # Referenciador
-            st.text_input("Referenciador", 
-                         placeholder="Origen del cliente/promoción", 
-                         key="prospecto_referenciador")
+            referenciador = st.text_input(
+                "Referenciador", 
+                value=st.session_state.prospecto_data.get("Referenciador", ""),
+                placeholder="Origen del cliente/promoción"
+            )
 
             # Dirección
-            st.text_input("Dirección", 
-                         placeholder="Ej: Calle 123, CDMX, 03100", 
-                         key="prospecto_direccion")
+            direccion = st.text_input(
+                "Dirección", 
+                value=st.session_state.prospecto_data.get("Dirección", ""),
+                placeholder="Ej: Calle 123, CDMX, 03100"
+            )
 
         # --- VALIDACIONES DE FECHAS ---
         fecha_errors = []
         
-        # Obtener valores actuales para validación
-        fnac = st.session_state.get("prospecto_nacimiento", "")
-        freg = st.session_state.get("prospecto_registro", "")
-        fcont = st.session_state.get("prospecto_contacto", "")
-        fseg = st.session_state.get("prospecto_seguimiento", "")
-
-        if fnac:
-            valido, error = validar_fecha(fnac)
+        if fecha_nacimiento:
+            valido, error = validar_fecha(fecha_nacimiento)
             if not valido:
                 fecha_errors.append(f"Fecha Nacimiento: {error}")
 
-        if freg:
-            valido, error = validar_fecha(freg)
+        if fecha_registro:
+            valido, error = validar_fecha(fecha_registro)
             if not valido:
                 fecha_errors.append(f"Fecha Registro: {error}")
         else:
             fecha_errors.append("Fecha Registro es obligatoria")
 
-        if fcont:
-            valido, error = validar_fecha(fcont)
+        if fecha_contacto:
+            valido, error = validar_fecha(fecha_contacto)
             if not valido:
                 fecha_errors.append(f"Fecha Contacto: {error}")
 
-        if fseg:
-            valido, error = validar_fecha(fseg)
+        if seguimiento:
+            valido, error = validar_fecha(seguimiento)
             if not valido:
                 fecha_errors.append(f"Seguimiento: {error}")
 
@@ -607,48 +594,45 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         col_b1, col_b2 = st.columns(2)
         
         with col_b1:
+            # Botón de envío principal - SIEMPRE debe estar presente
             if st.session_state.modo_edicion_prospectos:
-                submitted = st.form_submit_button("💾 Actualizar Prospecto", use_container_width=True)
+                submit_button = st.form_submit_button("💾 Actualizar Prospecto", use_container_width=True)
             else:
-                submitted = st.form_submit_button("💾 Agregar Nuevo Prospecto", use_container_width=True)
+                submit_button = st.form_submit_button("💾 Agregar Nuevo Prospecto", use_container_width=True)
         
         with col_b2:
-            # Botón de cancelar dentro del formulario
-            cancel_pressed = st.form_submit_button("🚫 Cancelar", use_container_width=True, type="secondary")
+            # Botón de cancelar secundario
+            cancel_button = st.form_submit_button("🚫 Cancelar", use_container_width=True, type="secondary")
 
-        # Procesar cancelación
-        if cancel_pressed:
-            for key in form_keys:
-                st.session_state[key] = ""
+        # --- PROCESAR BOTÓN CANCELAR ---
+        if cancel_button:
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
             st.rerun()
 
-        # --- PROCESAR ENVÍO DEL FORMULARIO ---
-        if submitted:
-            nombre_razon = st.session_state.get("prospecto_nombre", "").strip()
-            
-            if not nombre_razon:
+        # --- PROCESAR BOTÓN DE ENVÍO ---
+        if submit_button:
+            if not nombre_razon.strip():
                 st.warning("Debe completar al menos el nombre o razón social")
             elif fecha_errors:
                 st.warning("Corrija los errores en las fechas antes de guardar")
             else:
                 # Crear objeto con los datos del prospecto
                 nuevo_prospecto = {
-                    "Tipo Persona": st.session_state.get("prospecto_tipo", ""),
-                    "Nombre/Razón Social": nombre_razon,
-                    "Fecha Nacimiento": st.session_state.get("prospecto_nacimiento", ""),
-                    "RFC": st.session_state.get("prospecto_rfc", ""),
-                    "Teléfono": st.session_state.get("prospecto_telefono", ""),
-                    "Correo": st.session_state.get("prospecto_correo", ""),
-                    "Dirección": st.session_state.get("prospecto_direccion", ""),
-                    "Producto": st.session_state.get("prospecto_producto", ""),
-                    "Fecha Registro": st.session_state.get("prospecto_registro", fecha_actual()),
-                    "Fecha Contacto": st.session_state.get("prospecto_contacto", ""),
-                    "Seguimiento": st.session_state.get("prospecto_seguimiento", ""),
-                    "Representantes Legales": st.session_state.get("prospecto_representantes", ""),
-                    "Referenciador": st.session_state.get("prospecto_referenciador", "")
+                    "Tipo Persona": tipo_persona,
+                    "Nombre/Razón Social": nombre_razon.strip(),
+                    "Fecha Nacimiento": fecha_nacimiento,
+                    "RFC": rfc,
+                    "Teléfono": telefono,
+                    "Correo": correo,
+                    "Dirección": direccion,
+                    "Producto": producto,
+                    "Fecha Registro": fecha_registro if fecha_registro else fecha_actual(),
+                    "Fecha Contacto": fecha_contacto,
+                    "Seguimiento": seguimiento,
+                    "Representantes Legales": representantes,
+                    "Referenciador": referenciador
                 }
 
                 if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_editando:
@@ -671,8 +655,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.success(mensaje)
                     
                     # Limpiar estado después de guardar
-                    for key in form_keys:
-                        st.session_state[key] = ""
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
@@ -717,7 +699,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.metric("Prospectos este Mes", "N/A")
     else:
         st.info("No hay prospectos registrados")
-
 
 # Función para mostrar la pestaña de Póliza Prospectos
 def mostrar_poliza_prospectos(df_prospectos, df_polizas):
@@ -1290,6 +1271,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
