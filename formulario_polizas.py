@@ -462,8 +462,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                         st.session_state["prospecto_representantes"] = fila.get("Representantes Legales", "") or ""
                         st.session_state["prospecto_referenciador"] = fila.get("Referenciador", "") or ""
                         st.session_state["prospecto_direccion"] = fila.get("Dirección", "") or ""
-
-                        st.experimental_rerun()
+                        st.rerun()
 
             with col_btn2:
                 if st.button("❌ Limpiar selección", use_container_width=True):
@@ -1241,6 +1240,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
