@@ -977,7 +977,6 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
             st.info("No hay clientes registrados")
 
 # Función para mostrar la pestaña de Vencimientos
-# Función para mostrar la pestaña de Vencimientos
 def mostrar_vencimientos(df_polizas):
     st.header("⏰ Pólizas Próximas a Vencer (45-60 días)")
 
@@ -988,87 +987,171 @@ def mostrar_vencimientos(df_polizas):
         st.info("No hay pólizas registradas")
         return
 
-    # Intentar convertir columna "Fin Vigencia" a datetime (soporta dd/mm/yyyy y yyyy-mm-dd)
+    # Crear una copia para no modificar el original
     df = df_polizas.copy()
     
-    # Función segura para convertir fechas
-    def convertir_fecha(fecha_str):
-        if pd.isna(fecha_str) or fecha_str == "":
-            return pd.NaT
-        try:
-            # Intentar formato dd/mm/yyyy
-            return datetime.strptime(str(fecha_str), "%d/%m/%Y")
-        except ValueError:
+    # Limpiar y convertir fechas de manera segura
+    df_clean = df.copy()
+    
+    # Función para convertir fecha de manera segura
+    def safe_date_conversion(date_str):
+        if pd.isna(date_str) or date_str == "" or date_str is None:
+            return None
+        
+        date_str = str(date_str).strip()
+        
+        # Lista de formatos a probar
+        formats = [
+            "%d/%m/%Y",  # 31/12/2023
+            "%Y-%m-%d",  # 2023-12-31
+            "%d-%m-%Y",  # 31-12-2023
+            "%m/%d/%Y",  # 12/31/2023 (formato americano)
+            "%Y/%m/%d",  # 2023/12/31
+        ]
+        
+        for fmt in formats:
             try:
-                # Intentar formato yyyy-mm-dd
-                return datetime.strptime(str(fecha_str), "%Y-%m-%d")
+                return datetime.strptime(date_str, fmt).date()
             except ValueError:
-                try:
-                    # Intentar cualquier otro formato que pandas pueda reconocer
-                    return pd.to_datetime(fecha_str, dayfirst=True, errors='coerce')
-                except:
-                    return pd.NaT
+                continue
+        
+        # Si ningún formato funciona, usar pandas como último recurso
+        try:
+            result = pd.to_datetime(date_str, dayfirst=True, errors='coerce')
+            if not pd.isna(result):
+                return result.date()
+        except:
+            pass
+        
+        return None
+
+    # Aplicar conversión segura
+    df_clean['Fin_Vigencia_Date'] = df_clean['Fin Vigencia'].apply(safe_date_conversion)
     
-    # Aplicar conversión de fechas
-    df["Fin Vigencia DT"] = df["Fin Vigencia"].apply(convertir_fecha)
+    # Filtrar solo las que tienen fecha válida
+    df_valid = df_clean[df_clean['Fin_Vigencia_Date'].notna()]
     
-    # Filtrar solo las fechas válidas
-    df_fechas_validas = df[df["Fin Vigencia DT"].notna()]
-    
-    if df_fechas_validas.empty:
+    if df_valid.empty:
         st.info("No hay pólizas con fechas de vencimiento válidas")
         return
 
-    # Calcular días restantes solo para fechas válidas
+    # Calcular días restantes
     hoy = datetime.now().date()
-    df_fechas_validas["Días_Restantes"] = (df_fechas_validas["Fin Vigencia DT"].dt.date - hoy).dt.days
+    df_valid['Dias_Restantes'] = df_valid['Fin_Vigencia_Date'].apply(
+        lambda x: (x - hoy).days if x else None
+    )
     
-    # Filtrar pólizas vigentes que están próximas a vencer
-    if "Estado" in df_fechas_validas.columns:
-        df_vigentes = df_fechas_validas[df_fechas_validas["Estado"].astype(str).str.upper() == "VIGENTE"]
+    # Filtrar por estado VIGENTE si existe la columna
+    if 'Estado' in df_valid.columns:
+        df_vigentes = df_valid[df_valid['Estado'].astype(str).str.upper() == 'VIGENTE']
     else:
-        df_vigentes = df_fechas_validas
+        df_vigentes = df_valid
     
-    df_venc = df_vigentes[(df_vigentes["Días_Restantes"] >= 45) & (df_vigentes["Días_Restantes"] <= 60)]
+    # Filtrar por rango de días
+    df_proximas = df_vigentes[
+        (df_vigentes['Dias_Restantes'] >= 45) & 
+        (df_vigentes['Dias_Restantes'] <= 60)
+    ]
 
-    if df_venc.empty:
+    if df_proximas.empty:
         st.info("No hay pólizas que venzan en los próximos 45-60 días")
+        
+        # Mostrar algunas estadísticas
+        if not df_vigentes.empty and 'Dias_Restantes' in df_vigentes.columns:
+            st.subheader("Estadísticas de Pólizas Vigentes")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                vencen_pronto = len(df_vigentes[df_vigentes['Dias_Restantes'] < 45])
+                st.metric("Vencen en <45 días", vencen_pronto)
+            
+            with col2:
+                vencen_lejos = len(df_vigentes[df_vigentes['Dias_Restantes'] > 60])
+                st.metric("Vencen en >60 días", vencen_lejos)
+            
+            with col3:
+                total_vigentes = len(df_vigentes)
+                st.metric("Total Vigentes", total_vigentes)
+        
         return
 
-    # Formatear fecha para mostrar
-    df_venc["Fin Vigencia Formateada"] = df_venc["Fin Vigencia DT"].dt.strftime("%d/%m/%Y")
-    
-    columnas_mostrar = ["Nombre/Razón Social", "No. Póliza", "Producto", "Fin Vigencia Formateada", "Días_Restantes"]
-    columnas_disponibles = [col for col in columnas_mostrar if col in df_venc.columns]
-    
-    st.dataframe(df_venc[columnas_disponibles].rename(columns={"Fin Vigencia Formateada": "Fin Vigencia"}), 
-                 use_container_width=True)
+    # Preparar datos para mostrar
+    df_mostrar = df_proximas.copy()
+    df_mostrar['Fin_Vigencia_Formateada'] = df_mostrar['Fin_Vigencia_Date'].apply(
+        lambda x: x.strftime('%d/%m/%Y') if x else 'Fecha inválida'
+    )
 
-    # Detalles de póliza
+    # Columnas a mostrar
+    columnas_mostrar = ['Nombre/Razón Social', 'No. Póliza', 'Producto', 'Fin_Vigencia_Formateada', 'Dias_Restantes']
+    columnas_disponibles = [col for col in columnas_mostrar if col in df_mostrar.columns]
+    
+    # Renombrar para mejor presentación
+    df_display = df_mostrar[columnas_disponibles].rename(columns={
+        'Fin_Vigencia_Formateada': 'Fin Vigencia',
+        'Dias_Restantes': 'Días Restantes'
+    })
+    
+    # Aplicar estilo para resaltar por días restantes
+    def style_dias_restantes(val):
+        if val <= 50:
+            return 'background-color: #ffcccc; color: #cc0000; font-weight: bold;'
+        elif val <= 55:
+            return 'background-color: #fff0cc; color: #cc8800;'
+        else:
+            return 'background-color: #e6ffe6; color: #006600;'
+    
+    try:
+        styled_df = df_display.style.applymap(
+            style_dias_restantes, 
+            subset=['Días Restantes']
+        )
+        st.dataframe(styled_df, use_container_width=True)
+    except Exception:
+        st.dataframe(df_display, use_container_width=True)
+
+    # Detalles de póliza seleccionada
     st.subheader("Detalles de Póliza")
-    if "No. Póliza" in df_venc.columns:
-        polizas_lista = df_venc["No. Póliza"].tolist()
+    
+    if 'No. Póliza' in df_proximas.columns:
+        polizas_lista = df_proximas['No. Póliza'].astype(str).tolist()
+        
         if polizas_lista:
-            poliza_seleccionada = st.selectbox("Seleccionar Póliza para ver detalles", polizas_lista, key="detalle_poliza")
+            poliza_seleccionada = st.selectbox(
+                "Seleccionar Póliza para ver detalles", 
+                polizas_lista, 
+                key="detalle_poliza_vencimientos"
+            )
+            
             if poliza_seleccionada:
-                poliza_detalle = df_venc[df_venc["No. Póliza"] == poliza_seleccionada].iloc[0]
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**Información General:**")
-                    st.write(f"**Cliente:** {poliza_detalle.get('Nombre/Razón Social', '')}")
-                    st.write(f"**No. Póliza:** {poliza_detalle.get('No. Póliza', '')}")
-                    st.write(f"**Producto:** {poliza_detalle.get('Producto', '')}")
-                    st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', '')}")
-                    st.write(f"**Estado:** {poliza_detalle.get('Estado', '')}")
-                with col2:
-                    st.write("**Fechas:**")
-                    st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', '')}")
-                    st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin Vigencia Formateada', '')}")
-                    st.write(f"**Días Restantes:** {poliza_detalle.get('Días_Restantes', '')}")
-                    st.write("**Datos de Contacto:**")
-                    st.write(f"**Teléfono:** {poliza_detalle.get('Teléfono', '')}")
-                    st.write(f"**Correo:** {poliza_detalle.get('Correo', '')}")
-                 
+                # Encontrar la póliza seleccionada
+                poliza_mask = df_proximas['No. Póliza'].astype(str) == poliza_seleccionada
+                if poliza_mask.any():
+                    poliza_detalle = df_proximas[poliza_mask].iloc[0]
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**Información General:**")
+                        st.write(f"**Cliente:** {poliza_detalle.get('Nombre/Razón Social', 'N/A')}")
+                        st.write(f"**No. Póliza:** {poliza_detalle.get('No. Póliza', 'N/A')}")
+                        st.write(f"**Producto:** {poliza_detalle.get('Producto', 'N/A')}")
+                        st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', 'N/A')}")
+                        st.write(f"**Estado:** {poliza_detalle.get('Estado', 'N/A')}")
+                        st.write(f"**Días Restantes:** {poliza_detalle.get('Dias_Restantes', 'N/A')}")
+                    
+                    with col2:
+                        st.write("**Fechas:**")
+                        st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', 'N/A')}")
+                        st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin_Vigencia_Date', 'N/A')}")
+                        
+                        st.write("**Datos de Contacto:**")
+                        st.write(f"**Teléfono:** {poliza_detalle.get('Teléfono', 'N/A')}")
+                        st.write(f"**Correo:** {poliza_detalle.get('Correo', 'N/A')}")
+                        st.write(f"**Contacto:** {poliza_detalle.get('Contacto', 'N/A')}")
+                        
+                        if poliza_detalle.get('Dias_Restantes', 0) <= 50:
+                            st.warning("⚠️ Esta póliza vence pronto. Contactar al cliente.")
+
 # Función para mostrar la pestaña de Cobranza (versión mejorada)
 def mostrar_cobranza(df_polizas, df_cobranza):
     st.header("💰 Cobranza - Próximos 60 días")
@@ -1314,6 +1397,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
