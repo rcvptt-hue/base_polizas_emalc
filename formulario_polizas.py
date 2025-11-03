@@ -1153,7 +1153,6 @@ def mostrar_vencimientos(df_polizas):
                             st.warning("⚠️ Esta póliza vence pronto. Contactar al cliente.")
 
 # Función para mostrar la pestaña de Cobranza (versión mejorada)
-# Función para mostrar la pestaña de Cobranza (versión mejorada)
 def mostrar_cobranza(df_polizas, df_cobranza):
     st.header("💰 Cobranza - Próximos 60 días")
 
@@ -1231,7 +1230,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         
         if info_poliza is not None:
             st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
-            st.write(f"**Monto Esperado Actual:** ${info_poliza.get('Monto Esperado', 0):,.2f}")
+            st.write(f"**Monto Esperado:** ${info_poliza.get('Monto Esperado', 0):,.2f}")
             st.write(f"**Fecha Vencimiento:** {info_poliza.get('Fecha Vencimiento', '')}")
             if 'Días Restantes' in info_poliza:
                 st.write(f"**Días Restantes:** {info_poliza.get('Días Restantes', '')}")
@@ -1239,20 +1238,11 @@ def mostrar_cobranza(df_polizas, df_cobranza):
     # Formulario para el pago
     with st.form("form_pago"):
         if polizas_pendientes and info_poliza is not None:
-            # Campo editable para monto a pagar
-            monto_esperado = float(info_poliza.get('Monto Esperado', 0))
-            monto_editable = st.number_input(
-                "Monto a pagar (MXN) — editable", 
-                min_value=0.0,
-                value=monto_esperado,
-                step=0.01, 
-                key="monto_editable"
-            )
-
+            # Solo el campo Monto Pagado con valor 0 por defecto
             monto_pagado = st.number_input(
                 "Monto Pagado (MXN)", 
                 min_value=0.0,
-                value=monto_editable,
+                value=0.0,  # Valor por defecto 0
                 step=0.01, 
                 key="monto_pagado"
             )
@@ -1276,8 +1266,8 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                     else:
                         mask = (df_cobranza_completa['No. Póliza'] == poliza_seleccionada) & (df_cobranza_completa['Estatus'] == 'Pendiente')
                         if mask.any():
+                            # Actualizar solo el monto pagado, fecha y estatus
                             df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
-                            df_cobranza_completa.loc[mask, 'Monto Esperado'] = monto_editable
                             df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
                             df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
                             
@@ -1299,7 +1289,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                                 "Nombre/Razón Social": info_poliza.get('Nombre/Razón Social', ''),
                                 "Mes Cobranza": info_poliza.get('Mes Cobranza', ''),
                                 "Fecha Vencimiento": info_poliza.get('Fecha Vencimiento', ''),
-                                "Monto Esperado": monto_editable,
+                                "Monto Esperado": info_poliza.get('Monto Esperado', 0),
                                 "Monto Pagado": monto_pagado,
                                 "Fecha Pago": fecha_pago,
                                 "Estatus": "Pagado",
@@ -1464,6 +1454,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
