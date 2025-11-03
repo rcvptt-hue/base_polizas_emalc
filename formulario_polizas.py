@@ -495,7 +495,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_data = {}
             for k in keys:
                 st.session_state[k] = ""
-            st.experimental_rerun()
+            st.rerun()
 
     # --- FORMULARIO: los inputs usan solo key=... (valores desde session_state) ---
     with st.form("form_prospectos", clear_on_submit=False):
@@ -581,7 +581,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_data = {}
                     for k in keys:
                         st.session_state[k] = ""
-                    st.experimental_rerun()
+                    st.rerun()
 
         # --- Procesar submit: leer valores desde session_state directamente ---
         if submitted:
@@ -1240,6 +1240,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
