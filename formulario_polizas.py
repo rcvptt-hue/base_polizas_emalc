@@ -1419,7 +1419,7 @@ def main():
     # Cargar datos iniciales
     df_prospectos, df_polizas, df_cobranza, df_seguimiento = cargar_datos()
 
-    # Crear pestañas
+    # Crear pestañas con mejor manejo de estado
     tab_names = [
         "👥 Prospectos", 
         "📋 Póliza Prospectos", 
@@ -1429,12 +1429,21 @@ def main():
         "📞 Seguimiento"
     ]
 
-    cols = st.columns(len(tab_names))
-    for i, tab_name in enumerate(tab_names):
-        with cols[i]:
-            if st.button(tab_name, use_container_width=True, 
-                        type="primary" if st.session_state.active_tab == tab_name else "secondary"):
-                cambiar_pestaña(tab_name)
+    # Usar radio buttons o selectbox para una selección más confiable
+    st.markdown("---")
+    
+    # Opción 1: Usar radio buttons horizontalmente (más confiable)
+    st.markdown("**Navegación:**")
+    active_tab = st.radio(
+        "Selecciona una sección:",
+        options=tab_names,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="tab_selector"
+    )
+    
+    # Actualizar el estado de la pestaña activa
+    st.session_state.active_tab = active_tab
 
     st.markdown("---")
 
@@ -1454,6 +1463,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
