@@ -1153,6 +1153,7 @@ def mostrar_vencimientos(df_polizas):
                             st.warning("⚠️ Esta póliza vence pronto. Contactar al cliente.")
 
 # Función para mostrar la pestaña de Cobranza (versión mejorada)
+# Función para mostrar la pestaña de Cobranza (versión mejorada)
 def mostrar_cobranza(df_polizas, df_cobranza):
     st.header("💰 Cobranza - Próximos 60 días")
 
@@ -1203,67 +1204,133 @@ def mostrar_cobranza(df_polizas, df_cobranza):
 
     # Formulario para registrar pagos
     st.subheader("Registrar Pago")
-    with st.form("form_pago"):
-        polizas_pendientes = df_pendientes["No. Póliza"].tolist()
-        poliza_pago = st.selectbox("Seleccionar Póliza", polizas_pendientes, key="select_pol_pago")
+    
+    # Inicializar estado para la selección de póliza
+    if 'poliza_seleccionada_cobranza' not in st.session_state:
+        st.session_state.poliza_seleccionada_cobranza = None
+    if 'info_poliza_actual' not in st.session_state:
+        st.session_state.info_poliza_actual = None
 
-        info_poliza = None
-        if poliza_pago:
-            info_poliza = df_pendientes[df_pendientes["No. Póliza"] == poliza_pago].iloc[0]
+    # Selección de póliza FUERA del formulario para que actualice inmediatamente
+    polizas_pendientes = df_pendientes["No. Póliza"].tolist()
+    
+    if polizas_pendientes:
+        poliza_seleccionada = st.selectbox(
+            "Seleccionar Póliza", 
+            polizas_pendientes, 
+            key="select_pol_pago",
+            index=0
+        )
+        
+        # Actualizar información cuando cambia la selección
+        if poliza_seleccionada != st.session_state.poliza_seleccionada_cobranza:
+            st.session_state.poliza_seleccionada_cobranza = poliza_seleccionada
+            st.session_state.info_poliza_actual = df_pendientes[df_pendientes["No. Póliza"] == poliza_seleccionada].iloc[0]
+        
+        info_poliza = st.session_state.info_poliza_actual
+        
+        if info_poliza is not None:
             st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
             st.write(f"**Monto Esperado Actual:** ${info_poliza.get('Monto Esperado', 0):,.2f}")
             st.write(f"**Fecha Vencimiento:** {info_poliza.get('Fecha Vencimiento', '')}")
+            if 'Días Restantes' in info_poliza:
+                st.write(f"**Días Restantes:** {info_poliza.get('Días Restantes', '')}")
 
-        # Campo editable para monto a pagar (solo en el formulario, no modifica la hoja hasta confirmar)
-        monto_editable = st.number_input("Monto a pagar (MXN) — editable", min_value=0.0,
-                                         value=float(info_poliza.get('Monto Esperado', 0)) if info_poliza is not None else 0.0,
-                                         step=0.01, key="monto_editable")
+    # Formulario para el pago
+    with st.form("form_pago"):
+        if polizas_pendientes and info_poliza is not None:
+            # Campo editable para monto a pagar
+            monto_esperado = float(info_poliza.get('Monto Esperado', 0))
+            monto_editable = st.number_input(
+                "Monto a pagar (MXN) — editable", 
+                min_value=0.0,
+                value=monto_esperado,
+                step=0.01, 
+                key="monto_editable"
+            )
 
-        monto_pagado = st.number_input("Monto Pagado (MXN)", min_value=0.0,
-                                       value=monto_editable, step=0.01, key="monto_pagado")
-        fecha_pago = st.text_input("Fecha de Pago (dd/mm/yyyy)", value=fecha_actual(), key="fecha_pago_cob")
+            monto_pagado = st.number_input(
+                "Monto Pagado (MXN)", 
+                min_value=0.0,
+                value=monto_editable,
+                step=0.01, 
+                key="monto_pagado"
+            )
+            
+            fecha_pago = st.text_input(
+                "Fecha de Pago (dd/mm/yyyy)", 
+                value=fecha_actual(), 
+                key="fecha_pago_cob"
+            )
 
-        if st.form_submit_button("💾 Registrar Pago"):
-            # Validaciones
-            if monto_pagado <= 0:
-                st.warning("El monto pagado debe ser mayor a 0")
-            else:
-                valido, error = validar_fecha(fecha_pago)
-                if not valido:
-                    st.error(f"Fecha de pago: {error}")
+            submitted = st.form_submit_button("💾 Registrar Pago")
+            
+            if submitted:
+                # Validaciones
+                if monto_pagado <= 0:
+                    st.warning("El monto pagado debe ser mayor a 0")
                 else:
-                    mask = (df_cobranza_completa['No. Póliza'] == poliza_pago) & (df_cobranza_completa['Estatus'] == 'Pendiente')
-                    if mask.any():
-                        df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
-                        df_cobranza_completa.loc[mask, 'Monto Esperado'] = monto_editable
-                        df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
-                        df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
+                    valido, error = validar_fecha(fecha_pago)
+                    if not valido:
+                        st.error(f"Fecha de pago: {error}")
                     else:
-                        # Si no existe (caso raro), agregamos un registro como pagado
-                        nuevo = {
-                            "No. Póliza": poliza_pago,
-                            "Nombre/Razón Social": info_poliza.get('Nombre/Razón Social', '') if info_poliza is not None else "",
-                            "Mes Cobranza": info_poliza.get('Mes Cobranza', '') if info_poliza is not None else "",
-                            "Fecha Vencimiento": info_poliza.get('Fecha Vencimiento', '') if info_poliza is not None else "",
-                            "Monto Esperado": monto_editable,
-                            "Monto Pagado": monto_pagado,
-                            "Fecha Pago": fecha_pago,
-                            "Estatus": "Pagado",
-                            "Días Restantes": info_poliza.get('Días Restantes', None) if info_poliza is not None else None
-                        }
-                        df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
+                        mask = (df_cobranza_completa['No. Póliza'] == poliza_seleccionada) & (df_cobranza_completa['Estatus'] == 'Pendiente')
+                        if mask.any():
+                            df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
+                            df_cobranza_completa.loc[mask, 'Monto Esperado'] = monto_editable
+                            df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
+                            df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
+                            
+                            # Actualizar días de atraso si existe la columna
+                            if 'Días Atraso' in df_cobranza_completa.columns:
+                                fecha_vencimiento = info_poliza.get('Fecha Vencimiento', '')
+                                if fecha_vencimiento:
+                                    try:
+                                        fecha_venc_dt = datetime.strptime(fecha_vencimiento, "%d/%m/%Y")
+                                        fecha_pago_dt = datetime.strptime(fecha_pago, "%d/%m/%Y")
+                                        dias_atraso = max(0, (fecha_pago_dt - fecha_venc_dt).days)
+                                        df_cobranza_completa.loc[mask, 'Días Atraso'] = dias_atraso
+                                    except:
+                                        pass
+                        else:
+                            # Si no existe (caso raro), agregamos un registro como pagado
+                            nuevo = {
+                                "No. Póliza": poliza_seleccionada,
+                                "Nombre/Razón Social": info_poliza.get('Nombre/Razón Social', ''),
+                                "Mes Cobranza": info_poliza.get('Mes Cobranza', ''),
+                                "Fecha Vencimiento": info_poliza.get('Fecha Vencimiento', ''),
+                                "Monto Esperado": monto_editable,
+                                "Monto Pagado": monto_pagado,
+                                "Fecha Pago": fecha_pago,
+                                "Estatus": "Pagado",
+                                "Días Restantes": info_poliza.get('Días Restantes', None)
+                            }
+                            df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
 
-                    if guardar_datos(df_cobranza=df_cobranza_completa):
-                        st.success("✅ Pago registrado correctamente")
-                        st.rerun()
-                    else:
-                        st.error("❌ Error al registrar el pago")
+                        if guardar_datos(df_cobranza=df_cobranza_completa):
+                            st.success("✅ Pago registrado correctamente")
+                            st.rerun()
+                        else:
+                            st.error("❌ Error al registrar el pago")
+        else:
+            st.info("Seleccione una póliza para registrar el pago")
 
     # Mostrar historial de pagos registrados (si existe)
     if df_cobranza is not None and not df_cobranza.empty:
-        df_pagados = df_cobranza[df_cobranza['Estatus'] == 'Pagado'] if 'Estatus' in df_cobranza.columns else pd.DataFrame()
+        if 'Estatus' in df_cobranza.columns:
+            df_pagados = df_cobranza[df_cobranza['Estatus'] == 'Pagado']
+        else:
+            df_pagados = pd.DataFrame()
+            
         if not df_pagados.empty:
             st.subheader("Historial de Pagos")
+            
+            # Formatear columnas numéricas para mejor visualización
+            columnas_numericas = ['Monto Esperado', 'Monto Pagado']
+            for col in columnas_numericas:
+                if col in df_pagados.columns:
+                    df_pagados[col] = df_pagados[col].apply(lambda x: f"${x:,.2f}" if isinstance(x, (int, float)) else x)
+            
             st.dataframe(df_pagados, use_container_width=True)
 
 # Seguimiento
@@ -1397,6 +1464,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
