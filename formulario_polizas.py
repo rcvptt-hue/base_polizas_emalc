@@ -19,7 +19,7 @@ from dateutil.relativedelta import relativedelta
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Gestor de cartera Rizkora",
+    page_title="Gestor de Cartera Rizkora",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1401,7 +1401,7 @@ def mostrar_seguimiento(df_prospectos, df_seguimiento):
 
 # ---- Función principal ----
 def main():
-    st.title("📊 Gestor de Prospectos y Pólizas EALC")
+    st.title("📊 Gestor de Cartera Rizkora")
 
     # Botones para recargar o limpiar cache
     col1, col2, col3 = st.columns([3,1,1])
@@ -1463,6 +1463,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
