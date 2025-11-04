@@ -178,15 +178,15 @@ def guardar_datos(df_prospectos=None, df_polizas=None, df_cobranza=None, df_segu
               if not df_cobranza.empty:
                   data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
                   worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
-        except:
-           # Crear hoja si no existe
-           try:
-               worksheet_cobranza = spreadsheet.add_worksheet(title="Cobranza", rows=1000, cols=20)
-               if not df_cobranza.empty:
-                   data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
-                   worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
-           except Exception as e:
-               st.error(f"❌ Error al crear/actualizar hoja 'Cobranza': {e}")
+           except:
+              # Crear hoja si no existe
+              try:
+                  worksheet_cobranza = spreadsheet.add_worksheet(title="Cobranza", rows=1000, cols=20)
+                  if not df_cobranza.empty:
+                      data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
+                      worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
+              except Exception as e:
+                  st.error(f"❌ Error al crear/actualizar hoja 'Cobranza': {e}")
 
         # Actualizar hoja de Seguimiento si se proporciona
         if df_seguimiento is not None:
@@ -1883,6 +1883,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
