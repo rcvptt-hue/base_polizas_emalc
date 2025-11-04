@@ -304,32 +304,24 @@ def calcular_cobranza():
                             mes_cobranza = proxima_fecha.strftime("%m/%Y")
                             num_recibo = (meses_proximo // frecuencia) + 1
                             
-                            max_recibos = {
-                                "MENSUAL": 12,
-                                "TRIMESTRAL": 4,
-                                "SEMESTRAL": 2,
-                                "ANUAL": 1
-                            }
-                            
-                            max_recibo = max_recibos.get(periodicidad, 12)
-                            if num_recibo > max_recibo:
-                                num_recibo = ((num_recibo - 1) % max_recibo) + 1
-
-                            # Verificar si ya existe registro en cobranza
+                            # VERIFICAR SI YA EXISTE REGISTRO EN COBRANZA
                             existe_registro = False
                             if not df_cobranza.empty and "No. Póliza" in df_cobranza.columns and "Mes Cobranza" in df_cobranza.columns:
                                 existe_registro = ((df_cobranza["No. Póliza"].astype(str) == no_poliza) &
                                                   (df_cobranza["Mes Cobranza"] == mes_cobranza)).any()
 
                             if not existe_registro:
-                                # Determinar el monto según el número de recibo
+                                # CORRECCIÓN PRINCIPAL: LÓGICA PARA DETERMINAR EL MONTO
                                 if num_recibo == 1:
+                                    # PRIMER PAGO - usar siempre el campo "Primer Pago"
                                     monto_prima = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
                                 else:
-                                    if periodicidad in ["MENSUAL", "TRIMESTRAL", "SEMESTRAL"]:
-                                        monto_prima = float(str(pagos_subsecuentes).replace(',', '').replace('$', '')) if pagos_subsecuentes not in (None, "") else 0.0
-                                    else:
-                                        monto_prima = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
+                                    # PAGOS SUBSECUENTES - usar siempre el campo "Pagos Subsecuentes"
+                                    monto_prima = float(str(pagos_subsecuentes).replace(',', '').replace('$', '')) if pagos_subsecuentes not in (None, "") else 0.0
+                                
+                                # Si no hay monto en pagos subsecuentes, usar el primer pago como respaldo
+                                if num_recibo > 1 and monto_prima == 0:
+                                    monto_prima = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
 
                                 dias_restantes = (proxima_fecha - hoy).days
                                 cobranza_mes.append({
@@ -337,7 +329,7 @@ def calcular_cobranza():
                                     "Nombre/Razón Social": poliza.get("Nombre/Razón Social", ""),
                                     "Mes Cobranza": mes_cobranza,
                                     "Fecha Vencimiento": proxima_fecha.strftime("%d/%m/%Y"),
-                                    "Prima de Recibo": monto_prima,  # Cambiado de "Monto Esperado" a "Prima de Recibo"
+                                    "Prima de Recibo": monto_prima,
                                     "Monto Pagado": 0,
                                     "Fecha Pago": "",
                                     "Estatus": "Pendiente",
@@ -348,7 +340,8 @@ def calcular_cobranza():
                                 })
                             break
 
-            except Exception:
+            except Exception as e:
+                print(f"Error procesando póliza {no_poliza}: {e}")
                 continue
 
         return pd.DataFrame(cobranza_mes)
@@ -356,7 +349,7 @@ def calcular_cobranza():
     except Exception as e:
         st.error(f"Error al calcular cobranza: {e}")
         return pd.DataFrame()
-
+     
 # Función para manejar el cambio de pestaña
 def cambiar_pestaña(nombre_pestaña):
     st.session_state.active_tab = nombre_pestaña
@@ -1882,6 +1875,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
