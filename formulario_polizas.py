@@ -1627,7 +1627,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             # Mostrar Prima de Recibo formateada como "Valor Moneda"
             prima_recibo_formateado = formatear_monto(info_poliza.get('Monto Esperado', 0))
             moneda = info_poliza.get('Moneda', 'MXN')
-            st.write(f"**Prima de Recibo:** {moneda} {prima_recibo_formateado}")
+            st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
             
             # Mostrar Clave de Emisión
             st.write(f"**Clave de Emisión:** {info_poliza.get('Clave de Emisión', 'No disponible')}")
@@ -1805,6 +1805,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
