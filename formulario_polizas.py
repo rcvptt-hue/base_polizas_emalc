@@ -124,15 +124,15 @@ def cargar_datos():
                 "Periodicidad", "Moneda", "Recibo", "Clave de Emisión"
             ])
  
-         try:
+        try:
              worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
              df_seguimiento = pd.DataFrame(worksheet_seguimiento.get_all_records())
-         except Exception as e:
+        except Exception as e:
              df_seguimiento = pd.DataFrame(columns=[
                  "Nombre/Razón Social", "Fecha Contacto", "Estatus", "Comentarios", "Fecha Registro"
              ])
  
-         return df_prospectos, df_polizas, df_cobranza, df_seguimiento
+        return df_prospectos, df_polizas, df_cobranza, df_seguimiento
 
     except Exception as e:
         st.error(f"Error cargando datos: {e}")
@@ -1883,6 +1883,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
