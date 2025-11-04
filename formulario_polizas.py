@@ -913,21 +913,136 @@ def mostrar_consulta_clientes(df_polizas):
             
             st.subheader(f"Información del Cliente: {cliente_seleccionado}")
             
-            col1, col2 = st.columns(2)
+            # Inicializar estado para edición
+            if 'editando_cliente' not in st.session_state:
+                st.session_state.editando_cliente = False
+            if 'cliente_data_edit' not in st.session_state:
+                st.session_state.cliente_data_edit = {}
             
-            with col1:
-                st.write("**Información General:**")
-                st.write(f"**Tipo Persona:** {info_cliente.get('Tipo Persona', 'N/A')}")
-                st.write(f"**RFC:** {info_cliente.get('RFC', 'N/A')}")
-                st.write(f"**Teléfono:** {info_cliente.get('Teléfono', 'N/A')}")
-                st.write(f"**Correo:** {info_cliente.get('Correo', 'N/A')}")
-                st.write(f"**Fecha Nacimiento:** {info_cliente.get('Fecha Nacimiento', 'N/A')}")
+            # Botón para editar
+            if not st.session_state.editando_cliente:
+                if st.button("✏️ Editar Datos del Cliente", key="btn_editar_cliente"):
+                    st.session_state.editando_cliente = True
+                    st.session_state.cliente_data_edit = info_cliente.to_dict()
+                    st.rerun()
+            else:
+                if st.button("❌ Cancelar Edición", key="btn_cancelar_edicion_cliente"):
+                    st.session_state.editando_cliente = False
+                    st.session_state.cliente_data_edit = {}
+                    st.rerun()
             
-            with col2:
-                st.write("**Dirección y Contacto:**")
-                st.write(f"**Dirección:** {info_cliente.get('Dirección', 'N/A')}")
-                st.write(f"**Contacto:** {info_cliente.get('Contacto', 'N/A')}")
-                st.write(f"**Referenciador:** {info_cliente.get('Referenciador', 'N/A')}")
+            # Formulario de edición o visualización
+            if st.session_state.editando_cliente:
+                with st.form("form_editar_cliente"):
+                    st.write("**Editar Información del Cliente**")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        tipo_persona_edit = st.selectbox(
+                            "Tipo Persona", 
+                            OPCIONES_PERSONA,
+                            index=OPCIONES_PERSONA.index(st.session_state.cliente_data_edit.get("Tipo Persona", OPCIONES_PERSONA[0])) 
+                            if st.session_state.cliente_data_edit.get("Tipo Persona") in OPCIONES_PERSONA else 0,
+                            key="edit_tipo_persona"
+                        )
+                        rfc_edit = st.text_input(
+                            "RFC", 
+                            value=st.session_state.cliente_data_edit.get("RFC", ""),
+                            key="edit_rfc"
+                        )
+                        telefono_edit = st.text_input(
+                            "Teléfono", 
+                            value=st.session_state.cliente_data_edit.get("Teléfono", ""),
+                            key="edit_telefono"
+                        )
+                        correo_edit = st.text_input(
+                            "Correo", 
+                            value=st.session_state.cliente_data_edit.get("Correo", ""),
+                            key="edit_correo"
+                        )
+                        fecha_nacimiento_edit = st.text_input(
+                            "Fecha Nacimiento (dd/mm/yyyy)", 
+                            value=st.session_state.cliente_data_edit.get("Fecha Nacimiento", ""),
+                            placeholder="dd/mm/yyyy",
+                            key="edit_fecha_nac"
+                        )
+                    
+                    with col2:
+                        direccion_edit = st.text_input(
+                            "Dirección", 
+                            value=st.session_state.cliente_data_edit.get("Dirección", ""),
+                            placeholder="Ej: Calle 123, CDMX, 03100",
+                            key="edit_direccion"
+                        )
+                        contacto_edit = st.text_input(
+                            "Contacto", 
+                            value=st.session_state.cliente_data_edit.get("Contacto", ""),
+                            key="edit_contacto"
+                        )
+                        referenciador_edit = st.text_input(
+                            "Referenciador", 
+                            value=st.session_state.cliente_data_edit.get("Referenciador", ""),
+                            key="edit_referenciador"
+                        )
+                    
+                    # Validar fecha
+                    fecha_error = None
+                    if fecha_nacimiento_edit:
+                        valido, error = validar_fecha(fecha_nacimiento_edit)
+                        if not valido:
+                            fecha_error = f"Fecha Nacimiento: {error}"
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        submitted_edit = st.form_submit_button("💾 Guardar Cambios")
+                    with col_btn2:
+                        cancel_edit = st.form_submit_button("🚫 Cancelar")
+                    
+                    if cancel_edit:
+                        st.session_state.editando_cliente = False
+                        st.session_state.cliente_data_edit = {}
+                        st.rerun()
+                    
+                    if submitted_edit:
+                        if fecha_error:
+                            st.error(fecha_error)
+                        else:
+                            # Actualizar todas las pólizas del cliente con los nuevos datos
+                            for index in polizas_cliente.index:
+                                df_polizas.loc[index, "Tipo Persona"] = tipo_persona_edit
+                                df_polizas.loc[index, "RFC"] = rfc_edit
+                                df_polizas.loc[index, "Teléfono"] = telefono_edit
+                                df_polizas.loc[index, "Correo"] = correo_edit
+                                df_polizas.loc[index, "Fecha Nacimiento"] = fecha_nacimiento_edit
+                                df_polizas.loc[index, "Dirección"] = direccion_edit
+                                df_polizas.loc[index, "Contacto"] = contacto_edit
+                                df_polizas.loc[index, "Referenciador"] = referenciador_edit
+                            
+                            if guardar_datos(df_polizas=df_polizas):
+                                st.success("✅ Datos del cliente actualizados correctamente")
+                                st.session_state.editando_cliente = False
+                                st.session_state.cliente_data_edit = {}
+                                st.rerun()
+                            else:
+                                st.error("❌ Error al actualizar los datos del cliente")
+            else:
+                # Mostrar información en modo lectura
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Información General:**")
+                    st.write(f"**Tipo Persona:** {info_cliente.get('Tipo Persona', 'N/A')}")
+                    st.write(f"**RFC:** {info_cliente.get('RFC', 'N/A')}")
+                    st.write(f"**Teléfono:** {info_cliente.get('Teléfono', 'N/A')}")
+                    st.write(f"**Correo:** {info_cliente.get('Correo', 'N/A')}")
+                    st.write(f"**Fecha Nacimiento:** {info_cliente.get('Fecha Nacimiento', 'N/A')}")
+                
+                with col2:
+                    st.write("**Dirección y Contacto:**")
+                    st.write(f"**Dirección:** {info_cliente.get('Dirección', 'N/A')}")
+                    st.write(f"**Contacto:** {info_cliente.get('Contacto', 'N/A')}")
+                    st.write(f"**Referenciador:** {info_cliente.get('Referenciador', 'N/A')}")
 
         # Mostrar todas las pólizas del cliente
         st.subheader(f"Pólizas de {cliente_seleccionado}")
@@ -1339,25 +1454,59 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         st.success("🎉 No hay recibos pendientes de pago en los próximos 60 días")
         return
 
-    # Aplicar colores según días restantes si existe la columna
-    if 'Días Restantes' in df_pendientes.columns:
-        def color_row(dias_restantes):
-            if dias_restantes <= 5:
-                return 'background-color: #f8d7da; color: #721c24;'
-            elif dias_restantes <= 10:
-                return 'background-color: #fff3cd; color: #856404;'
-            elif dias_restantes <= 20:
-                return 'background-color: #ffe6cc; color: #cc6600;'
-            else:
-                return 'background-color: #d4edda; color: #155724;'
-
+    # Calcular días transcurridos desde la fecha de vencimiento (inicio del recibo)
+    hoy = datetime.now().date()
+    
+    def calcular_dias_transcurridos(fecha_vencimiento_str):
+        if not fecha_vencimiento_str or pd.isna(fecha_vencimiento_str):
+            return None
+        
         try:
-            styled_df = df_pendientes.style.applymap(lambda v: color_row(v) if isinstance(v, (int, float)) else '', subset=['Días Restantes'])
-            st.dataframe(styled_df, use_container_width=True)
-        except Exception:
-            st.dataframe(df_pendientes, use_container_width=True)
-    else:
-        st.dataframe(df_pendientes, use_container_width=True)
+            # Convertir fecha de vencimiento a datetime
+            fecha_vencimiento = datetime.strptime(fecha_vencimiento_str, "%d/%m/%Y").date()
+            # Calcular días transcurridos desde la fecha de vencimiento
+            dias_transcurridos = (hoy - fecha_vencimiento).days
+            return max(0, dias_transcurridos)  # No mostrar negativos
+        except:
+            return None
+
+    # Aplicar cálculo de días transcurridos
+    df_pendientes = df_pendientes.copy()
+    df_pendientes['Días Transcurridos'] = df_pendientes['Fecha Vencimiento'].apply(calcular_dias_transcurridos)
+
+    # Aplicar colores según días transcurridos
+    def color_row_by_dias_transcurridos(dias_transcurridos):
+        if dias_transcurridos is None:
+            return ''
+        elif dias_transcurridos >= 20:
+            return 'background-color: #f8d7da; color: #721c24; font-weight: bold;'  # Rojo
+        elif dias_transcurridos >= 11:
+            return 'background-color: #ffe6cc; color: #cc6600; font-weight: bold;'  # Naranja
+        elif dias_transcurridos >= 5:
+            return 'background-color: #fff3cd; color: #856404;'  # Amarillo
+        else:
+            return 'background-color: #d4edda; color: #155724;'  # Verde (menos de 5 días)
+
+    # Crear DataFrame para mostrar con la nueva columna
+    df_mostrar = df_pendientes.copy()
+    
+    try:
+        styled_df = df_mostrar.style.applymap(
+            lambda v: color_row_by_dias_transcurridos(v) if isinstance(v, (int, float)) else '', 
+            subset=['Días Transcurridos']
+        )
+        st.dataframe(styled_df, use_container_width=True)
+    except Exception:
+        st.dataframe(df_mostrar, use_container_width=True)
+
+    # Leyenda de colores
+    st.markdown("""
+    **Leyenda de colores:**
+    - 🟢 **Verde:** Menos de 5 días desde el vencimiento
+    - 🟡 **Amarillo:** 5-10 días desde el vencimiento  
+    - 🟠 **Naranja:** 11-20 días desde el vencimiento
+    - 🔴 **Rojo:** Más de 20 días desde el vencimiento
+    """)
 
     # Formulario para registrar pagos
     st.subheader("Registrar Pago")
@@ -1392,8 +1541,19 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             st.write(f"**Fecha Vencimiento:** {info_poliza.get('Fecha Vencimiento', '')}")
             st.write(f"**Periodicidad:** {info_poliza.get('Periodicidad', '')}")
             st.write(f"**Recibo No.:** {info_poliza.get('Recibo', '')}")
-            if 'Días Restantes' in info_poliza:
-                st.write(f"**Días Restantes:** {info_poliza.get('Días Restantes', '')}")
+            
+            # Mostrar días transcurridos
+            dias_transcurridos = calcular_dias_transcurridos(info_poliza.get('Fecha Vencimiento', ''))
+            if dias_transcurridos is not None:
+                st.write(f"**Días transcurridos desde vencimiento:** {dias_transcurridos}")
+                
+                # Mostrar alerta según días transcurridos
+                if dias_transcurridos >= 20:
+                    st.error("⚠️ **ALERTA:** Recibo con más de 20 días de vencido - Contacto urgente requerido")
+                elif dias_transcurridos >= 11:
+                    st.warning("⚠️ **ATENCIÓN:** Recibo con 11-20 días de vencido - Seguimiento necesario")
+                elif dias_transcurridos >= 5:
+                    st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
 
     # Formulario para el pago
     with st.form("form_pago"):
@@ -1564,3 +1724,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
