@@ -1474,6 +1474,43 @@ def mostrar_cobranza(df_polizas, df_cobranza):
     df_pendientes = df_pendientes.copy()
     df_pendientes['Días Transcurridos'] = df_pendientes['Fecha Vencimiento'].apply(calcular_dias_transcurridos)
 
+    # Formatear montos con 2 decimales y separador de miles
+    def formatear_monto(monto):
+        try:
+            if pd.isna(monto) or monto == "":
+                return "0.00"
+            monto_float = float(str(monto).replace(',', '').replace('$', ''))
+            return f"{monto_float:,.2f}"
+        except:
+            return "0.00"
+
+    # Aplicar formato a los montos
+    df_pendientes['Monto Esperado Formateado'] = df_pendientes['Monto Esperado'].apply(formatear_monto)
+    df_pendientes['Monto Pagado Formateado'] = df_pendientes['Monto Pagado'].apply(formatear_monto)
+
+    # Crear DataFrame para mostrar con las columnas reorganizadas
+    df_mostrar = df_pendientes.copy()
+    
+    # Definir el orden de columnas según los requerimientos
+    columnas_base = [
+        'Recibo', 'Periodicidad', 'Moneda', 'Monto Esperado Formateado', 
+        'Monto Pagado Formateado', 'No. Póliza', 'Nombre/Razón Social', 
+        'Mes Cobranza', 'Fecha Vencimiento', 'Fecha Pago', 'Estatus', 'Días Transcurridos'
+    ]
+    
+    # Filtrar solo las columnas que existen en el DataFrame
+    columnas_finales = [col for col in columnas_base if col in df_mostrar.columns]
+    
+    # Agregar cualquier columna adicional que no esté en la lista base
+    columnas_adicionales = [col for col in df_mostrar.columns if col not in columnas_base and col not in ['Monto Esperado', 'Monto Pagado', 'Días Restantes']]
+    columnas_finales.extend(columnas_adicionales)
+    
+    # Crear el DataFrame final para mostrar
+    df_display = df_mostrar[columnas_finales].rename(columns={
+        'Monto Esperado Formateado': 'Monto Esperado',
+        'Monto Pagado Formateado': 'Monto Pagado'
+    })
+
     # Aplicar colores según días transcurridos
     def color_row_by_dias_transcurridos(dias_transcurridos):
         if dias_transcurridos is None:
@@ -1487,17 +1524,14 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         else:
             return 'background-color: #d4edda; color: #155724;'  # Verde (menos de 5 días)
 
-    # Crear DataFrame para mostrar con la nueva columna
-    df_mostrar = df_pendientes.copy()
-    
     try:
-        styled_df = df_mostrar.style.applymap(
+        styled_df = df_display.style.applymap(
             lambda v: color_row_by_dias_transcurridos(v) if isinstance(v, (int, float)) else '', 
             subset=['Días Transcurridos']
         )
         st.dataframe(styled_df, use_container_width=True)
     except Exception:
-        st.dataframe(df_mostrar, use_container_width=True)
+        st.dataframe(df_display, use_container_width=True)
 
     # Leyenda de colores
     st.markdown("""
@@ -1537,7 +1571,11 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         
         if info_poliza is not None:
             st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
-            st.write(f"**Monto Esperado:** {info_poliza.get('Moneda', 'MXN')} {info_poliza.get('Monto Esperado', 0):,.2f}")
+            
+            # Mostrar montos formateados
+            monto_esperado_formateado = formatear_monto(info_poliza.get('Monto Esperado', 0))
+            st.write(f"**Monto Esperado:** {info_poliza.get('Moneda', 'MXN')} {monto_esperado_formateado}")
+            
             st.write(f"**Fecha Vencimiento:** {info_poliza.get('Fecha Vencimiento', '')}")
             st.write(f"**Periodicidad:** {info_poliza.get('Periodicidad', '')}")
             st.write(f"**Recibo No.:** {info_poliza.get('Recibo', '')}")
@@ -1617,7 +1655,6 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                                 "Monto Pagado": monto_pagado,
                                 "Fecha Pago": fecha_pago,
                                 "Estatus": "Pagado",
-                                "Días Restantes": info_poliza.get('Días Restantes', None),
                                 "Periodicidad": info_poliza.get('Periodicidad', ''),
                                 "Moneda": info_poliza.get('Moneda', 'MXN'),
                                 "Recibo": info_poliza.get('Recibo', '')
@@ -1644,20 +1681,27 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             
             # Formatear columnas para mejor visualización
             df_historial = df_pagados.copy()
-            if 'Monto Esperado' in df_historial.columns and 'Moneda' in df_historial.columns:
-                df_historial['Monto Esperado'] = df_historial.apply(
-                    lambda x: f"{x['Moneda']} {x['Monto Esperado']:,.2f}", axis=1
-                )
-            if 'Monto Pagado' in df_historial.columns and 'Moneda' in df_historial.columns:
-                df_historial['Monto Pagado'] = df_historial.apply(
-                    lambda x: f"{x['Moneda']} {x['Monto Pagado']:,.2f}", axis=1
-                )
             
-            columnas_historial = ['No. Póliza', 'Nombre/Razón Social', 'Mes Cobranza', 'Monto Esperado', 'Monto Pagado', 'Fecha Pago']
+            # Aplicar formato a los montos en el historial también
+            df_historial['Monto Esperado Formateado'] = df_historial['Monto Esperado'].apply(formatear_monto)
+            df_historial['Monto Pagado Formateado'] = df_historial['Monto Pagado'].apply(formatear_monto)
+            
+            # Definir columnas para el historial
+            columnas_historial = [
+                'Recibo', 'No. Póliza', 'Nombre/Razón Social', 'Mes Cobranza', 
+                'Monto Esperado Formateado', 'Monto Pagado Formateado', 'Fecha Pago',
+                'Periodicidad', 'Moneda'
+            ]
             columnas_disponibles = [col for col in columnas_historial if col in df_historial.columns]
             
-            st.dataframe(df_historial[columnas_disponibles], use_container_width=True)
-
+            # Renombrar las columnas formateadas para mostrar
+            df_historial_display = df_historial[columnas_disponibles].rename(columns={
+                'Monto Esperado Formateado': 'Monto Esperado',
+                'Monto Pagado Formateado': 'Monto Pagado'
+            })
+            
+            st.dataframe(df_historial_display, use_container_width=True)
+         
 # ---- Función principal ----
 def main():
     st.title("📊 Gestor de Cartera Rizkora")
@@ -1724,4 +1768,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
