@@ -237,7 +237,7 @@ def validar_fecha(fecha_str):
 def fecha_actual():
     return datetime.now().strftime("%d/%m/%Y")
 
-# Función para calcular cobranza (versión mejorada)
+# Función para calcular cobranza (versión corregida)
 def calcular_cobranza():
     try:
         _, df_polizas, df_cobranza, _ = cargar_datos()
@@ -259,7 +259,7 @@ def calcular_cobranza():
             no_poliza = str(poliza.get("No. Póliza", "")).strip()
             periodicidad = str(poliza.get("Periodicidad", "")).upper().strip()
             
-            # Obtener montos según periodicidad y número de recibo
+            # Obtener los montos correctos según los nuevos campos
             primer_pago = poliza.get("Primer Pago", 0)
             pagos_subsecuentes = poliza.get("Pagos Subsecuentes", 0)
             
@@ -331,8 +331,9 @@ def calcular_cobranza():
                                                   (df_cobranza["Mes Cobranza"] == mes_cobranza)).any()
 
                             if not existe_registro:
-                                # Determinar el monto según el número de recibo
+                                # Determinar el monto según el número de recibo y periodicidad
                                 if num_recibo == 1:
+                                    # Para el primer recibo, usar Primer Pago
                                     monto_float = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
                                 else:
                                     # Para recibos subsecuentes, usar Pagos Subsecuentes para periodicidades específicas
@@ -1892,3 +1893,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
