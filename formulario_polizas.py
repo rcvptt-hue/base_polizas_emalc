@@ -237,7 +237,9 @@ def validar_fecha(fecha_str):
 def fecha_actual():
     return datetime.now().strftime("%d/%m/%Y")
 
-# Función para calcular cobranza
+# =========================
+# 🔧 FUNCIÓN CALCULAR_COBRANZA (Versión final mejorada)
+# =========================
 def calcular_cobranza():
     try:
         _, df_polizas, df_cobranza, _ = cargar_datos()
@@ -295,7 +297,7 @@ def calcular_cobranza():
             # Calcular pagos desde el inicio hasta 2 años adelante
             while fecha_actual_calc <= hoy + relativedelta(years=2):
 
-                # Solo incluir pagos en el rango relevante
+                # Solo incluir pagos en el rango relevante (10 días atrás y 60 adelante)
                 if (hoy - timedelta(days=10)) <= fecha_actual_calc <= fecha_limite:
                     mes_cobranza = fecha_actual_calc.strftime("%m/%Y")
 
@@ -346,17 +348,31 @@ def calcular_cobranza():
 
                 num_recibo += 1
 
-        # Eliminar posibles duplicados
+        # Crear DataFrame
         df_resultado = pd.DataFrame(cobranza_mes)
-        if not df_resultado.empty:
-            df_resultado = df_resultado.drop_duplicates(subset=["No. Póliza", "Mes Cobranza"], keep="last")
+        if df_resultado.empty:
+            return df_resultado
 
-        print(f"✅ Cobranza generada: {len(df_resultado)} registros válidos.")
+        # Eliminar duplicados por póliza y mes
+        df_resultado = df_resultado.drop_duplicates(subset=["No. Póliza", "Mes Cobranza"], keep="last")
+
+        # 🔹 NUEVO: mantener solo el recibo más próximo por póliza
+        df_resultado["Fecha_Vencimiento_DT"] = pd.to_datetime(df_resultado["Fecha Vencimiento"], format="%d/%m/%Y", errors="coerce")
+        df_resultado = (
+            df_resultado.sort_values(["No. Póliza", "Fecha_Vencimiento_DT"])
+            .groupby("No. Póliza")
+            .head(1)
+            .reset_index(drop=True)
+        )
+        df_resultado = df_resultado.drop(columns=["Fecha_Vencimiento_DT"], errors="ignore")
+
+        print(f"✅ Cobranza generada: {len(df_resultado)} registros (solo el más próximo por póliza).")
         return df_resultado
 
     except Exception as e:
         st.error(f"Error al calcular cobranza: {e}")
         return pd.DataFrame()
+
      
 # Función para manejar el cambio de pestaña
 def cambiar_pestaña(nombre_pestaña):
@@ -1892,6 +1908,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
