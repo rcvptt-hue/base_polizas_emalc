@@ -807,7 +807,8 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                                        placeholder="Origen del cliente/promoción",
                                                        key="registro_referenciador")
                     monto_periodo = st.text_input("Monto por Periodo", key="registro_monto_periodo")
-
+                    clave_emision = st.text_input("Clave de Emisión", key="registro_clave_emision")
+                 
                 # Validar fechas obligatorias
                 fecha_errors = []
                 if inicio_vigencia:
@@ -871,7 +872,8 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                 "Correo": correo_poliza,
                                 "Fecha Nacimiento": fecha_nacimiento_poliza if fecha_nacimiento_poliza else "",
                                 "Moneda": moneda,
-                                "Referenciador": referenciador_poliza
+                                "Referenciador": referenciador_poliza,
+                                "Clave de Emisión": clave_emision
                             }
 
                             df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
@@ -1173,6 +1175,7 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     referenciador = st.text_input("Referenciador", 
                                                 placeholder="Origen del cliente/promoción",
                                                 key="nueva_poliza_referenciador")
+                    clave_emision = st.text_input("Clave de Emisión", key="nueva_poliza_clave_emision")
 
                 # Validar fechas obligatorias
                 fecha_errors = []
@@ -1238,7 +1241,8 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                                 "Correo": cliente_data.get("Correo", ""),
                                 "Fecha Nacimiento": cliente_data.get("Fecha Nacimiento", ""),
                                 "Moneda": moneda,
-                                "Referenciador": referenciador
+                                "Referenciador": referenciador,
+                                "Clave de Emisión": clave_emision
                             }
 
                             df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
@@ -1805,6 +1809,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
