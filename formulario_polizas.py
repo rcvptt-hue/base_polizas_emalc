@@ -237,7 +237,7 @@ def validar_fecha(fecha_str):
 def fecha_actual():
     return datetime.now().strftime("%d/%m/%Y")
 
-# Función para calcular cobranza (versión corregida sin Monto Esperado)
+# Función para calcular cobranza
 def calcular_cobranza():
     try:
         _, df_polizas, df_cobranza, _ = cargar_datos()
@@ -259,7 +259,7 @@ def calcular_cobranza():
             no_poliza = str(poliza.get("No. Póliza", "")).strip()
             periodicidad = str(poliza.get("Periodicidad", "")).upper().strip()
             
-            # Obtener los montos directamente de los campos correctos
+            # Obtener montos
             primer_pago = poliza.get("Primer Pago", 0)
             pagos_subsecuentes = poliza.get("Pagos Subsecuentes", 0)
             
@@ -284,66 +284,79 @@ def calcular_cobranza():
                 if inicio_vigencia is None:
                     continue
 
-                # Calcular próximas fechas de pago
-                frecuencias = {
-                    "MENSUAL": 1,
-                    "TRIMESTRAL": 3,
-                    "SEMESTRAL": 6,
-                    "ANUAL": 12
-                }
+                # DEBUG: Mostrar información de la póliza
+                print(f"Procesando póliza {no_poliza}:")
+                print(f"  Inicio vigencia: {inicio_vigencia_str}")
+                print(f"  Primer pago: {primer_pago}")
+                print(f"  Pagos subsecuentes: {pagos_subsecuentes}")
+                print(f"  Periodicidad: {periodicidad}")
 
-                frecuencia = frecuencias.get(periodicidad, 1)
-                meses_diff = (hoy.year - inicio_vigencia.year) * 12 + hoy.month - inicio_vigencia.month
+                # Calcular todos los pagos desde el inicio hasta 2 años en el futuro
+                fecha_actual_calc = inicio_vigencia
+                num_recibo = 1
+                
+                while fecha_actual_calc <= hoy + relativedelta(years=2):
+                    # Solo considerar pagos que estén dentro del rango (pasado reciente o futuro próximo)
+                    if (hoy - timedelta(days=10)) <= fecha_actual_calc <= fecha_limite:
+                        
+                        mes_cobranza = fecha_actual_calc.strftime("%m/%Y")
+                        
+                        # Verificar si ya existe registro en cobranza
+                        existe_registro = False
+                        if not df_cobranza.empty and "No. Póliza" in df_cobranza.columns and "Mes Cobranza" in df_cobranza.columns:
+                            existe_registro = ((df_cobranza["No. Póliza"].astype(str) == no_poliza) &
+                                              (df_cobranza["Mes Cobranza"] == mes_cobranza)).any()
 
-                for i in range(0, 24):
-                    meses_proximo = meses_diff + i
-                    if meses_proximo % frecuencia == 0:
-                        proxima_fecha = inicio_vigencia + relativedelta(months=meses_proximo)
-
-                        if (hoy - timedelta(days=10)) <= proxima_fecha <= fecha_limite:
-                            mes_cobranza = proxima_fecha.strftime("%m/%Y")
-                            num_recibo = (meses_proximo // frecuencia) + 1
+                        if not existe_registro:
+                            # Determinar el monto según el número de recibo
+                            if num_recibo == 1:
+                                monto_prima = float(str(primer_pago).replace(',', '').replace('$', '').strip()) if primer_pago not in (None, "", "0", 0) else 0.0
+                            else:
+                                monto_prima = float(str(pagos_subsecuentes).replace(',', '').replace('$', '').strip()) if pagos_subsecuentes not in (None, "", "0", 0) else 0.0
                             
-                            # VERIFICAR SI YA EXISTE REGISTRO EN COBRANZA
-                            existe_registro = False
-                            if not df_cobranza.empty and "No. Póliza" in df_cobranza.columns and "Mes Cobranza" in df_cobranza.columns:
-                                existe_registro = ((df_cobranza["No. Póliza"].astype(str) == no_poliza) &
-                                                  (df_cobranza["Mes Cobranza"] == mes_cobranza)).any()
+                            # Si no hay monto en pagos subsecuentes, usar el primer pago
+                            if num_recibo > 1 and monto_prima == 0:
+                                monto_prima = float(str(primer_pago).replace(',', '').replace('$', '').strip()) if primer_pago not in (None, "", "0", 0) else 0.0
 
-                            if not existe_registro:
-                                # CORRECCIÓN PRINCIPAL: LÓGICA PARA DETERMINAR EL MONTO
-                                if num_recibo == 1:
-                                    # PRIMER PAGO - usar siempre el campo "Primer Pago"
-                                    monto_prima = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
-                                else:
-                                    # PAGOS SUBSECUENTES - usar siempre el campo "Pagos Subsecuentes"
-                                    monto_prima = float(str(pagos_subsecuentes).replace(',', '').replace('$', '')) if pagos_subsecuentes not in (None, "") else 0.0
-                                
-                                # Si no hay monto en pagos subsecuentes, usar el primer pago como respaldo
-                                if num_recibo > 1 and monto_prima == 0:
-                                    monto_prima = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
+                            dias_restantes = (fecha_actual_calc - hoy).days
+                            
+                            print(f"  -> Recibo {num_recibo}: {fecha_actual_calc.strftime('%d/%m/%Y')} - Monto: {monto_prima}")
+                            
+                            cobranza_mes.append({
+                                "No. Póliza": no_poliza,
+                                "Nombre/Razón Social": poliza.get("Nombre/Razón Social", ""),
+                                "Mes Cobranza": mes_cobranza,
+                                "Fecha Vencimiento": fecha_actual_calc.strftime("%d/%m/%Y"),
+                                "Prima de Recibo": monto_prima,
+                                "Monto Pagado": 0,
+                                "Fecha Pago": "",
+                                "Estatus": "Pendiente",
+                                "Días Restantes": dias_restantes,
+                                "Periodicidad": periodicidad,
+                                "Moneda": moneda,
+                                "Recibo": num_recibo
+                            })
 
-                                dias_restantes = (proxima_fecha - hoy).days
-                                cobranza_mes.append({
-                                    "No. Póliza": no_poliza,
-                                    "Nombre/Razón Social": poliza.get("Nombre/Razón Social", ""),
-                                    "Mes Cobranza": mes_cobranza,
-                                    "Fecha Vencimiento": proxima_fecha.strftime("%d/%m/%Y"),
-                                    "Prima de Recibo": monto_prima,
-                                    "Monto Pagado": 0,
-                                    "Fecha Pago": "",
-                                    "Estatus": "Pendiente",
-                                    "Días Restantes": dias_restantes,
-                                    "Periodicidad": periodicidad,
-                                    "Moneda": moneda,
-                                    "Recibo": num_recibo
-                                })
-                            break
+                    # Avanzar a la siguiente fecha según periodicidad
+                    if periodicidad == "MENSUAL":
+                        fecha_actual_calc += relativedelta(months=1)
+                    elif periodicidad == "TRIMESTRAL":
+                        fecha_actual_calc += relativedelta(months=3)
+                    elif periodicidad == "SEMESTRAL":
+                        fecha_actual_calc += relativedelta(months=6)
+                    elif periodicidad == "ANUAL":
+                        fecha_actual_calc += relativedelta(years=1)
+                    else:
+                        # Por defecto, mensual
+                        fecha_actual_calc += relativedelta(months=1)
+                    
+                    num_recibo += 1
 
             except Exception as e:
-                print(f"Error procesando póliza {no_poliza}: {e}")
+                print(f"Error procesando póliza {no_poliza}: {str(e)}")
                 continue
 
+        print(f"Total de registros de cobranza generados: {len(cobranza_mes)}")
         return pd.DataFrame(cobranza_mes)
 
     except Exception as e:
@@ -1526,16 +1539,25 @@ def mostrar_cobranza(df_polizas, df_cobranza):
     df_pendientes_con_info['Días Transcurridos'] = df_pendientes_con_info['Próximo pago'].apply(calcular_dias_transcurridos)
 
     # Formatear montos con 2 decimales y separador de miles
+    # Función mejorada para formatear montos
     def formatear_monto(monto):
         try:
-            if pd.isna(monto) or monto == "":
+            if pd.isna(monto) or monto == "" or monto is None:
                 return "0.00"
-            monto_float = float(str(monto).replace(',', '').replace('$', ''))
+            # Si ya es float, formatearlo directamente
+            if isinstance(monto, (int, float)):
+                return f"{monto:,.2f}"
+            # Si es string, limpiarlo y convertir
+            monto_limpio = str(monto).replace(',', '').replace('$', '').replace(' ', '').strip()
+            if monto_limpio == '':
+                return "0.00"
+            monto_float = float(monto_limpio)
             return f"{monto_float:,.2f}"
-        except:
+        except Exception as e:
+            print(f"Error formateando monto '{monto}': {e}")
             return "0.00"
 
-    # Aplicar formato a los montos - CORREGIDO: Solo Prima de Recibo y Monto Pagado
+    # Aplicar formato a los montos - VERSIÓN MEJORADA
     df_pendientes_con_info['Prima de Recibo Formateado'] = df_pendientes_con_info['Prima de Recibo'].apply(formatear_monto)
     df_pendientes_con_info['Monto Pagado Formateado'] = df_pendientes_con_info['Monto Pagado'].apply(formatear_monto)
 
@@ -1875,6 +1897,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
