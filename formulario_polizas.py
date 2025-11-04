@@ -117,12 +117,12 @@ def cargar_datos():
         try:
             worksheet_cobranza = spreadsheet.worksheet("Cobranza")
             df_cobranza = pd.DataFrame(worksheet_cobranza.get_all_records())
-        except Exception as e:
-            df_cobranza = pd.DataFrame(columns=[
-                "No. Póliza", "Mes Cobranza", "Monto Recibo", "Monto Pagado",
-                "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes",
-                "Periodicidad", "Moneda", "Recibo", "Clave de Emisión"
-            ])
+       except Exception as e:
+           df_cobranza = pd.DataFrame(columns=[
+               "No. Póliza", "Mes Cobranza", "Prima de Recibo", "Monto Pagado",  # Cambiado Monto Esperado por Prima de Recibo
+               "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes",
+               "Periodicidad", "Moneda", "Recibo", "Clave de Emisión"
+           ])
 
         try:
             worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
@@ -172,21 +172,21 @@ def guardar_datos(df_prospectos=None, df_polizas=None, df_cobranza=None, df_segu
 
         # Actualizar hoja de Cobranza si se proporciona
         if df_cobranza is not None:
-            try:
-                worksheet_cobranza = spreadsheet.worksheet("Cobranza")
-                worksheet_cobranza.clear()
-                if not df_cobranza.empty:
-                    data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
-                    worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
-            except:
-                # Crear hoja si no existe
-                try:
-                    worksheet_cobranza = spreadsheet.add_worksheet(title="Cobranza", rows=1000, cols=20)
-                    if not df_cobranza.empty:
-                        data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
-                        worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
-                except Exception as e:
-                    st.error(f"❌ Error al crear/actualizar hoja 'Cobranza': {e}")
+           try:
+              worksheet_cobranza = spreadsheet.worksheet("Cobranza")
+              worksheet_cobranza.clear()
+              if not df_cobranza.empty:
+                  data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
+                  worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
+       except:
+           # Crear hoja si no existe
+           try:
+               worksheet_cobranza = spreadsheet.add_worksheet(title="Cobranza", rows=1000, cols=20)
+               if not df_cobranza.empty:
+                   data = [df_cobranza.columns.values.tolist()] + df_cobranza.fillna('').values.tolist()
+                   worksheet_cobranza.update(data, value_input_option='USER_ENTERED')
+           except Exception as e:
+               st.error(f"❌ Error al crear/actualizar hoja 'Cobranza': {e}")
 
         # Actualizar hoja de Seguimiento si se proporciona
         if df_seguimiento is not None:
@@ -237,7 +237,7 @@ def validar_fecha(fecha_str):
 def fecha_actual():
     return datetime.now().strftime("%d/%m/%Y")
 
-# Función para calcular cobranza (versión corregida)
+# Función para calcular cobranza (versión corregida sin Monto Esperado)
 def calcular_cobranza():
     try:
         _, df_polizas, df_cobranza, _ = cargar_datos()
@@ -252,14 +252,14 @@ def calcular_cobranza():
             return pd.DataFrame()
 
         hoy = datetime.now()
-        fecha_limite = hoy + timedelta(days=60)  # ventana extendida a 60 días
+        fecha_limite = hoy + timedelta(days=60)
         cobranza_mes = []
 
         for _, poliza in df_vigentes.iterrows():
             no_poliza = str(poliza.get("No. Póliza", "")).strip()
             periodicidad = str(poliza.get("Periodicidad", "")).upper().strip()
             
-            # Obtener los montos correctos según los nuevos campos
+            # Obtener los montos directamente de los campos correctos
             primer_pago = poliza.get("Primer Pago", 0)
             pagos_subsecuentes = poliza.get("Pagos Subsecuentes", 0)
             
@@ -284,7 +284,7 @@ def calcular_cobranza():
                 if inicio_vigencia is None:
                     continue
 
-                # Calcular próximas fechas de pago en la ventana
+                # Calcular próximas fechas de pago
                 frecuencias = {
                     "MENSUAL": 1,
                     "TRIMESTRAL": 3,
@@ -293,25 +293,17 @@ def calcular_cobranza():
                 }
 
                 frecuencia = frecuencias.get(periodicidad, 1)
-
-                # Calcular meses desde inicio hasta hoy
                 meses_diff = (hoy.year - inicio_vigencia.year) * 12 + hoy.month - inicio_vigencia.month
 
-                # Buscar el próximo pago dentro de la ventana (buscamos varios periodos por seguridad)
-                for i in range(0, 24):  # revisar hasta 24 periodos por seguridad
+                for i in range(0, 24):
                     meses_proximo = meses_diff + i
-                    # Encontrar múltiplos de la frecuencia
                     if meses_proximo % frecuencia == 0:
                         proxima_fecha = inicio_vigencia + relativedelta(months=meses_proximo)
 
-                        # Verificar si está dentro de los próximos 60 días o hasta 10 días atrás (para pagos recientes)
                         if (hoy - timedelta(days=10)) <= proxima_fecha <= fecha_limite:
                             mes_cobranza = proxima_fecha.strftime("%m/%Y")
-
-                            # Calcular número de recibo basado en la periodicidad
                             num_recibo = (meses_proximo // frecuencia) + 1
                             
-                            # Ajustar el número máximo de recibos según la periodicidad
                             max_recibos = {
                                 "MENSUAL": 12,
                                 "TRIMESTRAL": 4,
@@ -321,7 +313,6 @@ def calcular_cobranza():
                             
                             max_recibo = max_recibos.get(periodicidad, 12)
                             if num_recibo > max_recibo:
-                                # Reiniciar conteo si supera el máximo anual
                                 num_recibo = ((num_recibo - 1) % max_recibo) + 1
 
                             # Verificar si ya existe registro en cobranza
@@ -331,17 +322,14 @@ def calcular_cobranza():
                                                   (df_cobranza["Mes Cobranza"] == mes_cobranza)).any()
 
                             if not existe_registro:
-                                # Determinar el monto según el número de recibo y periodicidad
+                                # Determinar el monto según el número de recibo
                                 if num_recibo == 1:
-                                    # Para el primer recibo, usar Primer Pago
-                                    monto_float = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
+                                    monto_prima = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
                                 else:
-                                    # Para recibos subsecuentes, usar Pagos Subsecuentes para periodicidades específicas
                                     if periodicidad in ["MENSUAL", "TRIMESTRAL", "SEMESTRAL"]:
-                                        monto_float = float(str(pagos_subsecuentes).replace(',', '').replace('$', '')) if pagos_subsecuentes not in (None, "") else 0.0
+                                        monto_prima = float(str(pagos_subsecuentes).replace(',', '').replace('$', '')) if pagos_subsecuentes not in (None, "") else 0.0
                                     else:
-                                        # Para anual, seguir usando el primer pago
-                                        monto_float = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
+                                        monto_prima = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
 
                                 dias_restantes = (proxima_fecha - hoy).days
                                 cobranza_mes.append({
@@ -349,7 +337,7 @@ def calcular_cobranza():
                                     "Nombre/Razón Social": poliza.get("Nombre/Razón Social", ""),
                                     "Mes Cobranza": mes_cobranza,
                                     "Fecha Vencimiento": proxima_fecha.strftime("%d/%m/%Y"),
-                                    "Monto Esperado": monto_float,
+                                    "Prima de Recibo": monto_prima,  # Cambiado de "Monto Esperado" a "Prima de Recibo"
                                     "Monto Pagado": 0,
                                     "Fecha Pago": "",
                                     "Estatus": "Pendiente",
@@ -358,7 +346,7 @@ def calcular_cobranza():
                                     "Moneda": moneda,
                                     "Recibo": num_recibo
                                 })
-                            break  # Solo agregar el próximo pago encontrado
+                            break
 
             except Exception:
                 continue
@@ -1445,6 +1433,7 @@ def mostrar_renovaciones(df_polizas):
                             st.warning("⚠️ Esta póliza está próxima a vencer. Contactar al cliente para renovación.")
 
 # 7. Cobranza
+# 7. Cobranza (versión corregida sin Monto Esperado)
 def mostrar_cobranza(df_polizas, df_cobranza):
     st.header("💰 Cobranza")
 
@@ -1641,12 +1630,13 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         info_poliza = st.session_state.info_poliza_actual
         
         if info_poliza is not None:
-            st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
-            
-            # Mostrar Prima de Recibo formateada como "Valor Moneda"
-            prima_recibo_formateado = formatear_monto(info_poliza.get('Monto Esperado', 0))
-            moneda = info_poliza.get('Moneda', 'MXN')
-            st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
+           st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
+           
+           # Mostrar Prima de Recibo directamente (ya no hay Monto Esperado)
+           prima_recibo = info_poliza.get('Prima de Recibo', 0)
+           moneda = info_poliza.get('Moneda', 'MXN')
+           prima_recibo_formateado = f"{prima_recibo:,.2f}"
+           st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
             
             # Mostrar Clave de Emisión
             st.write(f"**Clave de Emisión:** {info_poliza.get('Clave de Emisión', 'No disponible')}")
@@ -1893,5 +1883,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
