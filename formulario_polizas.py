@@ -117,22 +117,22 @@ def cargar_datos():
         try:
             worksheet_cobranza = spreadsheet.worksheet("Cobranza")
             df_cobranza = pd.DataFrame(worksheet_cobranza.get_all_records())
-       except Exception as e:
-           df_cobranza = pd.DataFrame(columns=[
-               "No. Póliza", "Mes Cobranza", "Prima de Recibo", "Monto Pagado",  # Cambiado Monto Esperado por Prima de Recibo
-               "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes",
-               "Periodicidad", "Moneda", "Recibo", "Clave de Emisión"
-           ])
-
-        try:
-            worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
-            df_seguimiento = pd.DataFrame(worksheet_seguimiento.get_all_records())
         except Exception as e:
-            df_seguimiento = pd.DataFrame(columns=[
-                "Nombre/Razón Social", "Fecha Contacto", "Estatus", "Comentarios", "Fecha Registro"
+            df_cobranza = pd.DataFrame(columns=[
+                "No. Póliza", "Mes Cobranza", "Prima de Recibo", "Monto Pagado",  # Cambiado Monto Esperado por Prima de Recibo
+                "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes",
+                "Periodicidad", "Moneda", "Recibo", "Clave de Emisión"
             ])
-
-        return df_prospectos, df_polizas, df_cobranza, df_seguimiento
+ 
+         try:
+             worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
+             df_seguimiento = pd.DataFrame(worksheet_seguimiento.get_all_records())
+         except Exception as e:
+             df_seguimiento = pd.DataFrame(columns=[
+                 "Nombre/Razón Social", "Fecha Contacto", "Estatus", "Comentarios", "Fecha Registro"
+             ])
+ 
+         return df_prospectos, df_polizas, df_cobranza, df_seguimiento
 
     except Exception as e:
         st.error(f"Error cargando datos: {e}")
@@ -1883,6 +1883,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
