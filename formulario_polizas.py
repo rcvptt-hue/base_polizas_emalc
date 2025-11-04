@@ -2,11 +2,10 @@
 """
 Created on Sat Nov  1 21:11:49 2025
 Updated full version with:
- - Auto-fill of prospect fields when selecting a prospect to edit
- - Improved cobrarza calculation (±60 days window, robust parsing)
- - Editable 'Monto a pagar' field before registering payments
- - All original sections included: Prospectos, Póliza Prospectos, Pólizas Nuevas,
-   Próximos Vencimientos, Cobranza, Seguimiento
+ - Reorganización de pestañas según requerimientos
+ - Nueva funcionalidad de Consulta de Clientes
+ - Cambio de Próximos Vencimientos a Renovaciones
+ - Todas las secciones originales mejoradas
 """
 
 import streamlit as st
@@ -36,6 +35,7 @@ OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANCOMER", "BANREGIO",
 OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
 OPCIONES_MONEDA = ["MXN", "UDIS", "DLLS"]
 OPCIONES_ESTATUS_SEGUIMIENTO = ["Seguimiento", "Descartado", "Convertido"]
+OPCIONES_ESTADO_POLIZA = ["VIGENTE", "CANCELADO", "TERMINADO"]
 
 # Inicializar estado de sesión
 if 'active_tab' not in st.session_state:
@@ -120,7 +120,8 @@ def cargar_datos():
         except Exception as e:
             df_cobranza = pd.DataFrame(columns=[
                 "No. Póliza", "Mes Cobranza", "Monto Esperado", "Monto Pagado",
-                "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes"
+                "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes",
+                "Periodicidad", "Moneda", "Recibo"
             ])
 
         try:
@@ -235,61 +236,6 @@ def validar_fecha(fecha_str):
 # Función para obtener fecha actual en formato texto
 def fecha_actual():
     return datetime.now().strftime("%d/%m/%Y")
-
-# Función para obtener pólizas próximas a vencer
-def obtener_polizas_proximas_vencer(dias_min=45, dias_max=60):
-    try:
-        _, df_polizas, _, _ = cargar_datos()
-
-        if df_polizas.empty:
-            return pd.DataFrame()
-
-        if "Estado" in df_polizas.columns:
-            df_vigentes = df_polizas[df_polizas["Estado"] == "VIGENTE"]
-        else:
-            df_vigentes = pd.DataFrame()
-
-        if df_vigentes.empty:
-            return pd.DataFrame()
-
-        polizas_proximas = []
-        hoy = datetime.now().date()
-
-        for _, poliza in df_vigentes.iterrows():
-            fecha_fin_str = poliza.get("Fin Vigencia", "")
-            if pd.isna(fecha_fin_str) or fecha_fin_str == "":
-                continue
-
-            try:
-                fecha_fin = None
-                if isinstance(fecha_fin_str, str):
-                    try:
-                        fecha_fin = datetime.strptime(fecha_fin_str, "%d/%m/%Y").date()
-                    except ValueError:
-                        try:
-                            fecha_fin = datetime.strptime(fecha_fin_str, "%Y-%m-%d").date()
-                        except ValueError:
-                            continue
-
-                if fecha_fin is None:
-                    continue
-
-                dias_restantes = (fecha_fin - hoy).days
-
-                if dias_min <= dias_restantes <= dias_max:
-                    poliza_data = poliza.to_dict()
-                    poliza_data["Días Restantes"] = dias_restantes
-                    poliza_data["Fin Vigencia"] = fecha_fin.strftime("%d/%m/%Y")
-                    polizas_proximas.append(poliza_data)
-
-            except Exception as e:
-                continue
-
-        return pd.DataFrame(polizas_proximas)
-
-    except Exception as e:
-        st.error(f"Error al obtener pólizas próximas a vencer: {e}")
-        return pd.DataFrame()
 
 # Función para calcular cobranza (versión mejorada)
 def calcular_cobranza():
@@ -420,9 +366,9 @@ def cambiar_pestaña(nombre_pestaña):
 
 # ---- Funciones para cada pestaña (completas) ----
 
-# Prospectos
+# 1. Prospectos
 def mostrar_prospectos(df_prospectos, df_polizas):
-    st.header("Gestión de Prospectos")
+    st.header("👥 Gestión de Prospectos")
 
     # --- Inicializar estado para la edición ---
     if 'modo_edicion_prospectos' not in st.session_state:
@@ -720,72 +666,147 @@ def mostrar_prospectos(df_prospectos, df_polizas):
     else:
         st.info("No hay prospectos registrados")
 
-# Función para mostrar la pestaña de Póliza Prospectos
-def mostrar_poliza_prospectos(df_prospectos, df_polizas):
-    st.header("Convertir Prospecto a Póliza")
+# 2. Seguimiento
+def mostrar_seguimiento(df_prospectos, df_seguimiento):
+    st.header("📞 Seguimiento de Prospectos")
+
+    # Selector de prospecto
+    if not df_prospectos.empty:
+        prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
+        prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="seguimiento_prospecto")
+
+        if prospecto_seleccionado:
+            # Buscar seguimientos existentes
+            seguimientos_existentes = pd.DataFrame()
+            if not df_seguimiento.empty and "Nombre/Razón Social" in df_seguimiento.columns:
+                seguimientos_existentes = df_seguimiento[df_seguimiento["Nombre/Razón Social"] == prospecto_seleccionado]
+
+            with st.form("form_seguimiento", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    nueva_fecha_contacto = st.text_input("Nueva Fecha de Contacto (dd/mm/yyyy)*", 
+                                                       value=fecha_actual(),
+                                                       placeholder="dd/mm/yyyy",
+                                                       key="nueva_fecha_contacto")
+                    estatus = st.selectbox("Estatus", OPCIONES_ESTATUS_SEGUIMIENTO, key="estatus_seguimiento")
+
+                with col2:
+                    comentarios = st.text_area("Comentarios*", 
+                                             placeholder="Anotar lo que indique el prospecto...",
+                                             key="comentarios_seguimiento")
+
+                submitted = st.form_submit_button("💾 Guardar Seguimiento")
+
+                if submitted:
+                    # Validar fecha
+                    valido, error = validar_fecha(nueva_fecha_contacto)
+                    if not valido:
+                        st.error(f"Fecha de contacto: {error}")
+                    elif not comentarios:
+                        st.warning("Los comentarios son obligatorios")
+                    else:
+                        nuevo_seguimiento = {
+                            "Nombre/Razón Social": prospecto_seleccionado,
+                            "Fecha Contacto": nueva_fecha_contacto,
+                            "Estatus": estatus,
+                            "Comentarios": comentarios,
+                            "Fecha Registro": fecha_actual()
+                        }
+
+                        df_seguimiento = pd.concat([df_seguimiento, pd.DataFrame([nuevo_seguimiento])], ignore_index=True)
+
+                        if guardar_datos(df_seguimiento=df_seguimiento):
+                            st.success("✅ Seguimiento guardado correctamente")
+                            # Si el estatus es "Convertido", notificamos
+                            if estatus == "Convertido":
+                                st.info("ℹ️ El prospecto ha sido marcado como 'Convertido'. Puedes proceder a crear su póliza en la pestaña 'Registro de Cliente'")
+                            st.rerun()
+                        else:
+                            st.error("❌ Error al guardar el seguimiento")
+
+            # Mostrar historial de seguimientos
+            if not seguimientos_existentes.empty:
+                st.subheader("Historial de Seguimientos")
+                try:
+                    # Intentar ordenar por Fecha Contacto si posible
+                    seguimientos_existentes = seguimientos_existentes.sort_values("Fecha Contacto", ascending=False)
+                except Exception:
+                    pass
+                st.dataframe(seguimientos_existentes, use_container_width=True)
+    else:
+        st.info("No hay prospectos registrados")
+
+    # Mostrar todos los seguimientos
+    if not df_seguimiento.empty:
+        st.subheader("Todos los Seguimientos")
+        st.dataframe(df_seguimiento, use_container_width=True)
+
+# 3. Registro de Cliente (Primera Póliza)
+def mostrar_registro_cliente(df_prospectos, df_polizas):
+    st.header("👤 Registro de Cliente (Primera Póliza)")
 
     # Seleccionar prospecto
     if not df_prospectos.empty:
         prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
-        prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="poliza_prospecto")
+        prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="registro_cliente")
 
         if prospecto_seleccionado:
             # Cargar datos del prospecto seleccionado
             prospecto_data = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado].iloc[0]
 
-            with st.form("form_poliza_prospecto", clear_on_submit=True):
-                st.subheader(f"Creando Póliza para: {prospecto_seleccionado}")
+            with st.form("form_registro_cliente", clear_on_submit=True):
+                st.subheader(f"Creando Primera Póliza para: {prospecto_seleccionado}")
 
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.text_input("Tipo Persona", value=prospecto_data.get("Tipo Persona", ""), key="poliza_tipo", disabled=True)
-                    st.text_input("Nombre/Razón Social", value=prospecto_data.get("Nombre/Razón Social", ""), key="poliza_nombre", disabled=True)
-                    no_poliza = st.text_input("No. Póliza*", key="poliza_numero")
+                    st.text_input("Tipo Persona", value=prospecto_data.get("Tipo Persona", ""), key="registro_tipo", disabled=True)
+                    st.text_input("Nombre/Razón Social", value=prospecto_data.get("Nombre/Razón Social", ""), key="registro_nombre", disabled=True)
+                    no_poliza = st.text_input("No. Póliza*", key="registro_numero")
                     producto_poliza = st.selectbox("Producto", OPCIONES_PRODUCTO, 
                                           index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
                                           if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
-                                          key="poliza_producto")
+                                          key="registro_producto")
                     inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
                                                   placeholder="dd/mm/yyyy",
-                                                  key="poliza_inicio")
+                                                  key="registro_inicio")
                     fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
                                                placeholder="dd/mm/yyyy",
-                                               key="poliza_fin")
-                    rfc_poliza = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="poliza_rfc")
-                    forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="poliza_pago")
-                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="poliza_moneda")
+                                               key="registro_fin")
+                    rfc_poliza = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="registro_rfc")
+                    forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="registro_pago")
+                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="registro_moneda")
 
                 with col2:
-                    banco = st.selectbox("Banco", OPCIONES_BANCO, key="poliza_banco")
-                    periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="poliza_periodicidad")
-                    prima_emitida = st.text_input("Prima Total Emitida", key="poliza_prima")
-                    prima_neta = st.text_input("Prima Neta", key="poliza_prima_neta")
-                    primer_pago = st.text_input("Primer Pago", key="poliza_primer_pago")
-                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="poliza_pagos_sub")
-                    aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="poliza_aseguradora")
-                    comision_porcentaje = st.text_input("% Comisión", key="poliza_comision_pct")
-                    referenciador_poliza = st.text_input("Referenciador", 
-                                                       value=prospecto_data.get("Referenciador", ""),
-                                                       placeholder="Origen del cliente/promoción",
-                                                       key="poliza_referenciador")
-
-                col3, col4 = st.columns(2)
-                with col3:
-                    estado = st.selectbox("Estado", ["VIGENTE", "CANCELADO", "TERMINADO"], key="poliza_estado")
-                    contacto = st.text_input("Contacto", key="poliza_contacto")
+                    banco = st.selectbox("Banco", OPCIONES_BANCO, key="registro_banco")
+                    periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
+                    prima_emitida = st.text_input("Prima Total Emitida", key="registro_prima")
+                    prima_neta = st.text_input("Prima Neta", key="registro_prima_neta")
+                    aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="registro_aseguradora")
+                    comision_porcentaje = st.text_input("% Comisión", key="registro_comision_pct")
+                    estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="registro_estado")
+                    contacto = st.text_input("Contacto", key="registro_contacto")
                     direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
                                             value=prospecto_data.get("Dirección", ""),
                                             placeholder="Ej: Calle 123, CDMX, 03100",
-                                            key="poliza_direccion")
+                                            key="registro_direccion")
 
-                with col4:
-                    telefono_poliza = st.text_input("Teléfono", value=prospecto_data.get("Teléfono", ""), key="poliza_telefono")
-                    correo_poliza = st.text_input("Correo", value=prospecto_data.get("Correo", ""), key="poliza_correo")
+                col3, col4 = st.columns(2)
+                with col3:
+                    telefono_poliza = st.text_input("Teléfono", value=prospecto_data.get("Teléfono", ""), key="registro_telefono")
+                    correo_poliza = st.text_input("Correo", value=prospecto_data.get("Correo", ""), key="registro_correo")
                     fecha_nacimiento_poliza = st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
                                                    value=prospecto_data.get("Fecha Nacimiento", ""),
                                                    placeholder="dd/mm/yyyy",
-                                                   key="poliza_fecha_nac")
+                                                   key="registro_fecha_nac")
+
+                with col4:
+                    referenciador_poliza = st.text_input("Referenciador", 
+                                                       value=prospecto_data.get("Referenciador", ""),
+                                                       placeholder="Origen del cliente/promoción",
+                                                       key="registro_referenciador")
+                    monto_periodo = st.text_input("Monto por Periodo", key="registro_monto_periodo")
 
                 # Validar fechas obligatorias
                 fecha_errors = []
@@ -812,7 +833,7 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                     for error in fecha_errors:
                         st.error(error)
 
-                submitted_poliza = st.form_submit_button("💾 Agregar Póliza")
+                submitted_poliza = st.form_submit_button("💾 Registrar Cliente y Póliza")
                 if submitted_poliza:
                     if not no_poliza:
                         st.warning("Debe completar el número de póliza")
@@ -838,10 +859,9 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                                 "Forma de Pago": forma_pago,
                                 "Banco": banco,
                                 "Periodicidad": periodicidad,
-                                "Prima Total Emitida": prima_emitida,
+                                "Prima Emitida": prima_emitida,
                                 "Prima Neta": prima_neta,
-                                "Primer Pago": primer_pago,
-                                "Pagos Subsecuentes": pagos_subsecuentes,
+                                "Monto Periodo": monto_periodo,
                                 "Aseguradora": aseguradora,
                                 "% Comisión": comision_porcentaje,
                                 "Estado": estado,
@@ -850,7 +870,7 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                                 "Teléfono": telefono_poliza,
                                 "Correo": correo_poliza,
                                 "Fecha Nacimiento": fecha_nacimiento_poliza if fecha_nacimiento_poliza else "",
-                                "Moneda": moneda if 'moneda' in locals() else "",
+                                "Moneda": moneda,
                                 "Referenciador": referenciador_poliza
                             }
 
@@ -860,15 +880,131 @@ def mostrar_poliza_prospectos(df_prospectos, df_polizas):
                             df_prospectos = df_prospectos[df_prospectos["Nombre/Razón Social"] != prospecto_seleccionado]
 
                             if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
-                                st.success("✅ Póliza agregada correctamente")
-                                cambiar_pestaña("🆕 Pólizas Nuevas")
+                                st.success("✅ Cliente registrado correctamente con su primera póliza")
                                 st.rerun()
         else:
-            st.info("No hay prospectos disponibles para convertir")
+            st.info("No hay prospectos disponibles para convertir en clientes")
 
-# Función para mostrar la pestaña de Pólizas Nuevas
-def mostrar_polizas_nuevas(df_prospectos, df_polizas):
-    st.header("Gestión de Pólizas para Clientes Existentes")
+# 4. Consulta de Clientes
+def mostrar_consulta_clientes(df_polizas):
+    st.header("🔍 Consulta de Clientes")
+
+    if df_polizas.empty:
+        st.info("No hay clientes registrados")
+        return
+
+    # Obtener lista única de clientes
+    clientes_unicos = df_polizas["Nombre/Razón Social"].dropna().unique().tolist()
+    
+    if not clientes_unicos:
+        st.info("No hay clientes registrados")
+        return
+
+    # Seleccionar cliente
+    cliente_seleccionado = st.selectbox("Seleccionar Cliente", clientes_unicos, key="consulta_cliente")
+
+    if cliente_seleccionado:
+        # Filtrar pólizas del cliente seleccionado
+        polizas_cliente = df_polizas[df_polizas["Nombre/Razón Social"] == cliente_seleccionado]
+        
+        # Mostrar información general del cliente (tomada de la primera póliza)
+        if not polizas_cliente.empty:
+            info_cliente = polizas_cliente.iloc[0]
+            
+            st.subheader(f"Información del Cliente: {cliente_seleccionado}")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Información General:**")
+                st.write(f"**Tipo Persona:** {info_cliente.get('Tipo Persona', 'N/A')}")
+                st.write(f"**RFC:** {info_cliente.get('RFC', 'N/A')}")
+                st.write(f"**Teléfono:** {info_cliente.get('Teléfono', 'N/A')}")
+                st.write(f"**Correo:** {info_cliente.get('Correo', 'N/A')}")
+                st.write(f"**Fecha Nacimiento:** {info_cliente.get('Fecha Nacimiento', 'N/A')}")
+            
+            with col2:
+                st.write("**Dirección y Contacto:**")
+                st.write(f"**Dirección:** {info_cliente.get('Dirección', 'N/A')}")
+                st.write(f"**Contacto:** {info_cliente.get('Contacto', 'N/A')}")
+                st.write(f"**Referenciador:** {info_cliente.get('Referenciador', 'N/A')}")
+
+        # Mostrar todas las pólizas del cliente
+        st.subheader(f"Pólizas de {cliente_seleccionado}")
+        
+        # Contadores por estado
+        if 'Estado' in polizas_cliente.columns:
+            vigentes = len(polizas_cliente[polizas_cliente['Estado'] == 'VIGENTE'])
+            canceladas = len(polizas_cliente[polizas_cliente['Estado'] == 'CANCELADO'])
+            terminadas = len(polizas_cliente[polizas_cliente['Estado'] == 'TERMINADO'])
+            
+            col_stat1, col_stat2, col_stat3 = st.columns(3)
+            with col_stat1:
+                st.metric("Pólizas Vigentes", vigentes)
+            with col_stat2:
+                st.metric("Pólizas Canceladas", canceladas)
+            with col_stat3:
+                st.metric("Pólizas Terminadas", terminadas)
+
+        # Mostrar tabla de pólizas
+        columnas_mostrar = ["No. Póliza", "Producto", "Aseguradora", "Inicio Vigencia", "Fin Vigencia", "Estado", "Moneda"]
+        columnas_disponibles = [col for col in columnas_mostrar if col in polizas_cliente.columns]
+        
+        if columnas_disponibles:
+            st.dataframe(polizas_cliente[columnas_disponibles], use_container_width=True)
+        else:
+            st.dataframe(polizas_cliente, use_container_width=True)
+
+        # Detalles de póliza específica
+        st.subheader("Detalles de Póliza Específica")
+        if "No. Póliza" in polizas_cliente.columns:
+            polizas_lista = polizas_cliente["No. Póliza"].tolist()
+            poliza_seleccionada = st.selectbox("Seleccionar Póliza para ver detalles", polizas_lista, key="detalle_poliza_consulta")
+            
+            if poliza_seleccionada:
+                poliza_detalle = polizas_cliente[polizas_cliente["No. Póliza"] == poliza_seleccionada].iloc[0]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Información de la Póliza:**")
+                    st.write(f"**No. Póliza:** {poliza_detalle.get('No. Póliza', 'N/A')}")
+                    st.write(f"**Producto:** {poliza_detalle.get('Producto', 'N/A')}")
+                    st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', 'N/A')}")
+                    st.write(f"**Estado:** {poliza_detalle.get('Estado', 'N/A')}")
+                    st.write(f"**Moneda:** {poliza_detalle.get('Moneda', 'N/A')}")
+                    st.write(f"**Periodicidad:** {poliza_detalle.get('Periodicidad', 'N/A')}")
+                
+                with col2:
+                    st.write("**Fechas y Montos:**")
+                    st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', 'N/A')}")
+                    st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin Vigencia', 'N/A')}")
+                    st.write(f"**Prima Emitida:** {poliza_detalle.get('Prima Emitida', 'N/A')}")
+                    st.write(f"**Prima Neta:** {poliza_detalle.get('Prima Neta', 'N/A')}")
+                    st.write(f"**Monto Periodo:** {poliza_detalle.get('Monto Periodo', 'N/A')}")
+                    st.write(f"**% Comisión:** {poliza_detalle.get('% Comisión', 'N/A')}")
+
+                # Formulario para actualizar estado de la póliza
+                with st.form("form_actualizar_estado"):
+                    st.write("**Actualizar Estado de la Póliza**")
+                    nuevo_estado = st.selectbox("Nuevo Estado", OPCIONES_ESTADO_POLIZA, 
+                                               index=OPCIONES_ESTADO_POLIZA.index(poliza_detalle.get('Estado', 'VIGENTE')) 
+                                               if poliza_detalle.get('Estado') in OPCIONES_ESTADO_POLIZA else 0)
+                    
+                    if st.form_submit_button("💾 Actualizar Estado"):
+                        # Actualizar el estado en el DataFrame
+                        mask = (df_polizas['No. Póliza'] == poliza_seleccionada)
+                        df_polizas.loc[mask, 'Estado'] = nuevo_estado
+                        
+                        if guardar_datos(df_polizas=df_polizas):
+                            st.success("✅ Estado de la póliza actualizado correctamente")
+                            st.rerun()
+                        else:
+                            st.error("❌ Error al actualizar el estado")
+
+# 5. Póliza Nueva (para clientes existentes)
+def mostrar_poliza_nueva(df_prospectos, df_polizas):
+    st.header("🆕 Póliza Nueva para Cliente Existente")
 
     # Seleccionar cliente existente
     if not df_polizas.empty and "Nombre/Razón Social" in df_polizas.columns:
@@ -911,9 +1047,10 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
                 with col2:
                     prima_emitida = st.text_input("Prima Total Emitida", key="nueva_poliza_prima")
                     prima_neta = st.text_input("Prima Neta", key="nueva_poliza_prima_neta")
+                    monto_periodo = st.text_input("Monto por Periodo", key="nueva_poliza_monto_periodo")
                     aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="nueva_poliza_aseguradora")
                     comision_porcentaje = st.text_input("% Comisión", key="nueva_poliza_comision_pct")
-                    estado = st.selectbox("Estado", ["VIGENTE", "CANCELADO", "TERMINADO"], key="nueva_poliza_estado")
+                    estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="nueva_poliza_estado")
                     contacto = st.text_input("Contacto", key="nueva_poliza_contacto")
                     direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
                                             placeholder="Ej: Calle 123, CDMX, 03100",
@@ -974,8 +1111,9 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
                                 "Forma de Pago": forma_pago,
                                 "Banco": banco,
                                 "Periodicidad": periodicidad,
-                                "Prima Total Emitida": prima_emitida,
+                                "Prima Emitida": prima_emitida,
                                 "Prima Neta": prima_neta,
+                                "Monto Periodo": monto_periodo,
                                 "Aseguradora": aseguradora,
                                 "% Comisión": comision_porcentaje,
                                 "Estado": estado,
@@ -996,11 +1134,11 @@ def mostrar_polizas_nuevas(df_prospectos, df_polizas):
         else:
             st.info("No hay clientes registrados")
 
-# Función para mostrar la pestaña de Vencimientos
-def mostrar_vencimientos(df_polizas):
-    st.header("⏰ Pólizas Próximas a Vencer (45-60 días)")
+# 6. Renovaciones (antes Próximos Vencimientos)
+def mostrar_renovaciones(df_polizas):
+    st.header("🔄 Renovaciones (Pólizas por Vencer)")
 
-    if st.button("🔄 Actualizar Lista", key="actualizar_vencimientos"):
+    if st.button("🔄 Actualizar Lista", key="actualizar_renovaciones"):
         st.cache_data.clear()
 
     if df_polizas.empty:
@@ -1067,36 +1205,36 @@ def mostrar_vencimientos(df_polizas):
     else:
         df_vigentes = df_valid
     
-    # Filtrar por rango de días
-    df_proximas = df_vigentes[
+    # Filtrar por rango de días (45-60 días para renovaciones)
+    df_renovaciones = df_vigentes[
         (df_vigentes['Dias_Restantes'] >= 45) & 
         (df_vigentes['Dias_Restantes'] <= 60)
     ]
 
-    if df_proximas.empty:
-        st.info("No hay pólizas que venzan en los próximos 45-60 días")
+    if df_renovaciones.empty:
+        st.info("No hay pólizas por renovar en los próximos 45-60 días")
         
         # Mostrar algunas estadísticas
         if not df_vigentes.empty and 'Dias_Restantes' in df_vigentes.columns:
             st.subheader("Estadísticas de Pólizas Vigentes")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col_stats3 = st.columns(3)
             
             with col1:
-                vencen_pronto = len(df_vigentes[df_vigentes['Dias_Restantes'] < 45])
-                st.metric("Vencen en <45 días", vencen_pronto)
+                por_renovar = len(df_vigentes[df_vigentes['Dias_Restantes'] < 45])
+                st.metric("Por renovar (<45 días)", por_renovar)
             
             with col2:
-                vencen_lejos = len(df_vigentes[df_vigentes['Dias_Restantes'] > 60])
-                st.metric("Vencen en >60 días", vencen_lejos)
+                renovaciones_lejanas = len(df_vigentes[df_vigentes['Dias_Restantes'] > 60])
+                st.metric("Renovaciones lejanas (>60 días)", renovaciones_lejanas)
             
-            with col3:
+            with col_stats3:
                 total_vigentes = len(df_vigentes)
                 st.metric("Total Vigentes", total_vigentes)
         
         return
 
     # Preparar datos para mostrar
-    df_mostrar = df_proximas.copy()
+    df_mostrar = df_renovaciones.copy()
     df_mostrar['Fin_Vigencia_Formateada'] = df_mostrar['Fin_Vigencia_Date'].apply(
         lambda x: x.strftime('%d/%m/%Y') if x else 'Fecha inválida'
     )
@@ -1108,11 +1246,11 @@ def mostrar_vencimientos(df_polizas):
     # Renombrar para mejor presentación
     df_display = df_mostrar[columnas_disponibles].rename(columns={
         'Fin_Vigencia_Formateada': 'Fin Vigencia',
-        'Dias_Restantes': 'Días Restantes'
+        'Dias_Restantes': 'Días para Renovación'
     })
     
     # Aplicar estilo para resaltar por días restantes
-    def style_dias_restantes(val):
+    def style_dias_renovacion(val):
         if val <= 50:
             return 'background-color: #ffcccc; color: #cc0000; font-weight: bold;'
         elif val <= 55:
@@ -1122,31 +1260,31 @@ def mostrar_vencimientos(df_polizas):
     
     try:
         styled_df = df_display.style.applymap(
-            style_dias_restantes, 
-            subset=['Días Restantes']
+            style_dias_renovacion, 
+            subset=['Días para Renovación']
         )
         st.dataframe(styled_df, use_container_width=True)
     except Exception:
         st.dataframe(df_display, use_container_width=True)
 
     # Detalles de póliza seleccionada
-    st.subheader("Detalles de Póliza")
+    st.subheader("Detalles para Renovación")
     
-    if 'No. Póliza' in df_proximas.columns:
-        polizas_lista = df_proximas['No. Póliza'].astype(str).tolist()
+    if 'No. Póliza' in df_renovaciones.columns:
+        polizas_lista = df_renovaciones['No. Póliza'].astype(str).tolist()
         
         if polizas_lista:
             poliza_seleccionada = st.selectbox(
                 "Seleccionar Póliza para ver detalles", 
                 polizas_lista, 
-                key="detalle_poliza_vencimientos"
+                key="detalle_poliza_renovaciones"
             )
             
             if poliza_seleccionada:
                 # Encontrar la póliza seleccionada
-                poliza_mask = df_proximas['No. Póliza'].astype(str) == poliza_seleccionada
+                poliza_mask = df_renovaciones['No. Póliza'].astype(str) == poliza_seleccionada
                 if poliza_mask.any():
-                    poliza_detalle = df_proximas[poliza_mask].iloc[0]
+                    poliza_detalle = df_renovaciones[poliza_mask].iloc[0]
                     
                     col1, col2 = st.columns(2)
                     
@@ -1157,7 +1295,7 @@ def mostrar_vencimientos(df_polizas):
                         st.write(f"**Producto:** {poliza_detalle.get('Producto', 'N/A')}")
                         st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', 'N/A')}")
                         st.write(f"**Estado:** {poliza_detalle.get('Estado', 'N/A')}")
-                        st.write(f"**Días Restantes:** {poliza_detalle.get('Dias_Restantes', 'N/A')}")
+                        st.write(f"**Días para Renovación:** {poliza_detalle.get('Dias_Restantes', 'N/A')}")
                     
                     with col2:
                         st.write("**Fechas:**")
@@ -1170,11 +1308,11 @@ def mostrar_vencimientos(df_polizas):
                         st.write(f"**Contacto:** {poliza_detalle.get('Contacto', 'N/A')}")
                         
                         if poliza_detalle.get('Dias_Restantes', 0) <= 50:
-                            st.warning("⚠️ Esta póliza vence pronto. Contactar al cliente.")
+                            st.warning("⚠️ Esta póliza está próxima a vencer. Contactar al cliente para renovación.")
 
-# Función para mostrar la pestaña de Cobranza (versión mejorada)
+# 7. Cobranza
 def mostrar_cobranza(df_polizas, df_cobranza):
-    st.header("💰 Cobranza - Próximos 60 días")
+    st.header("💰 Cobranza")
 
     # Calcular cobranza de los próximos 60 días
     df_cobranza_proxima = calcular_cobranza()
@@ -1344,93 +1482,21 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         if not df_pagados.empty:
             st.subheader("Historial de Pagos")
             
-            # Formatear columnas numéricas para mejor visualización
-            columnas_numericas = ['Monto Esperado', 'Monto Pagado']
-            for col in columnas_numericas:
-                if col in df_pagados.columns:
-                    df_pagados[col] = df_pagados[col].apply(
-                        lambda x: f"${x:,.2f}" if isinstance(x, (int, float)) and col == 'Monto Pagado' else 
-                                 f"{df_pagados[df_pagados.columns[df_pagados.columns.get_loc(col)]].get('Moneda', 'MXN')} {x:,.2f}" 
-                                 if isinstance(x, (int, float)) else x
-                    )
+            # Formatear columnas para mejor visualización
+            df_historial = df_pagados.copy()
+            if 'Monto Esperado' in df_historial.columns and 'Moneda' in df_historial.columns:
+                df_historial['Monto Esperado'] = df_historial.apply(
+                    lambda x: f"{x['Moneda']} {x['Monto Esperado']:,.2f}", axis=1
+                )
+            if 'Monto Pagado' in df_historial.columns and 'Moneda' in df_historial.columns:
+                df_historial['Monto Pagado'] = df_historial.apply(
+                    lambda x: f"{x['Moneda']} {x['Monto Pagado']:,.2f}", axis=1
+                )
             
-            st.dataframe(df_pagados, use_container_width=True)
-
-# Seguimiento
-def mostrar_seguimiento(df_prospectos, df_seguimiento):
-    st.header("📞 Seguimiento de Prospectos")
-
-    # Selector de prospecto
-    if not df_prospectos.empty:
-        prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
-        prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="seguimiento_prospecto")
-
-        if prospecto_seleccionado:
-            # Buscar seguimientos existentes
-            seguimientos_existentes = pd.DataFrame()
-            if not df_seguimiento.empty and "Nombre/Razón Social" in df_seguimiento.columns:
-                seguimientos_existentes = df_seguimiento[df_seguimiento["Nombre/Razón Social"] == prospecto_seleccionado]
-
-            with st.form("form_seguimiento", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    nueva_fecha_contacto = st.text_input("Nueva Fecha de Contacto (dd/mm/yyyy)*", 
-                                                       value=fecha_actual(),
-                                                       placeholder="dd/mm/yyyy",
-                                                       key="nueva_fecha_contacto")
-                    estatus = st.selectbox("Estatus", OPCIONES_ESTATUS_SEGUIMIENTO, key="estatus_seguimiento")
-
-                with col2:
-                    comentarios = st.text_area("Comentarios*", 
-                                             placeholder="Anotar lo que indique el prospecto...",
-                                             key="comentarios_seguimiento")
-
-                submitted = st.form_submit_button("💾 Guardar Seguimiento")
-
-                if submitted:
-                    # Validar fecha
-                    valido, error = validar_fecha(nueva_fecha_contacto)
-                    if not valido:
-                        st.error(f"Fecha de contacto: {error}")
-                    elif not comentarios:
-                        st.warning("Los comentarios son obligatorios")
-                    else:
-                        nuevo_seguimiento = {
-                            "Nombre/Razón Social": prospecto_seleccionado,
-                            "Fecha Contacto": nueva_fecha_contacto,
-                            "Estatus": estatus,
-                            "Comentarios": comentarios,
-                            "Fecha Registro": fecha_actual()
-                        }
-
-                        df_seguimiento = pd.concat([df_seguimiento, pd.DataFrame([nuevo_seguimiento])], ignore_index=True)
-
-                        if guardar_datos(df_seguimiento=df_seguimiento):
-                            st.success("✅ Seguimiento guardado correctamente")
-                            # Si el estatus es "Convertido", notificamos
-                            if estatus == "Convertido":
-                                st.info("ℹ️ El prospecto ha sido marcado como 'Convertido'. Puedes proceder a crear su póliza en la pestaña 'Póliza Prospectos'")
-                            st.rerun()
-                        else:
-                            st.error("❌ Error al guardar el seguimiento")
-
-            # Mostrar historial de seguimientos
-            if not seguimientos_existentes.empty:
-                st.subheader("Historial de Seguimientos")
-                try:
-                    # Intentar ordenar por Fecha Contacto si posible
-                    seguimientos_existentes = seguimientos_existentes.sort_values("Fecha Contacto", ascending=False)
-                except Exception:
-                    pass
-                st.dataframe(seguimientos_existentes, use_container_width=True)
-    else:
-        st.info("No hay prospectos registrados")
-
-    # Mostrar todos los seguimientos
-    if not df_seguimiento.empty:
-        st.subheader("Todos los Seguimientos")
-        st.dataframe(df_seguimiento, use_container_width=True)
+            columnas_historial = ['No. Póliza', 'Nombre/Razón Social', 'Mes Cobranza', 'Monto Esperado', 'Monto Pagado', 'Fecha Pago']
+            columnas_disponibles = [col for col in columnas_historial if col in df_historial.columns]
+            
+            st.dataframe(df_historial[columnas_disponibles], use_container_width=True)
 
 # ---- Función principal ----
 def main():
@@ -1452,20 +1518,20 @@ def main():
     # Cargar datos iniciales
     df_prospectos, df_polizas, df_cobranza, df_seguimiento = cargar_datos()
 
-    # Crear pestañas con mejor manejo de estado
+    # Crear pestañas en el orden solicitado
     tab_names = [
         "👥 Prospectos", 
-        "📋 Póliza Prospectos", 
-        "🆕 Pólizas Nuevas", 
-        "⏰ Próximos Vencimientos",
-        "💰 Cobranza",
-        "📞 Seguimiento"
+        "📞 Seguimiento",
+        "👤 Registro de Cliente", 
+        "🔍 Consulta de Clientes",
+        "🆕 Póliza Nueva",
+        "🔄 Renovaciones",
+        "💰 Cobranza"
     ]
 
-    # Usar radio buttons o selectbox para una selección más confiable
+    # Usar radio buttons para una selección más confiable
     st.markdown("---")
     
-    # Opción 1: Usar radio buttons horizontalmente (más confiable)
     st.markdown("**Navegación:**")
     active_tab = st.radio(
         "Selecciona una sección:",
@@ -1483,32 +1549,18 @@ def main():
     # Mostrar el contenido de la pestaña activa
     if st.session_state.active_tab == "👥 Prospectos":
         mostrar_prospectos(df_prospectos, df_polizas)
-    elif st.session_state.active_tab == "📋 Póliza Prospectos":
-        mostrar_poliza_prospectos(df_prospectos, df_polizas)
-    elif st.session_state.active_tab == "🆕 Pólizas Nuevas":
-        mostrar_polizas_nuevas(df_prospectos, df_polizas)
-    elif st.session_state.active_tab == "⏰ Próximos Vencimientos":
-        mostrar_vencimientos(df_polizas)
-    elif st.session_state.active_tab == "💰 Cobranza":
-        mostrar_cobranza(df_polizas, df_cobranza)
     elif st.session_state.active_tab == "📞 Seguimiento":
         mostrar_seguimiento(df_prospectos, df_seguimiento)
+    elif st.session_state.active_tab == "👤 Registro de Cliente":
+        mostrar_registro_cliente(df_prospectos, df_polizas)
+    elif st.session_state.active_tab == "🔍 Consulta de Clientes":
+        mostrar_consulta_clientes(df_polizas)
+    elif st.session_state.active_tab == "🆕 Póliza Nueva":
+        mostrar_poliza_nueva(df_prospectos, df_polizas)
+    elif st.session_state.active_tab == "🔄 Renovaciones":
+        mostrar_renovaciones(df_polizas)
+    elif st.session_state.active_tab == "💰 Cobranza":
+        mostrar_cobranza(df_polizas, df_cobranza)
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
