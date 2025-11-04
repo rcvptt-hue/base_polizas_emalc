@@ -109,9 +109,9 @@ def cargar_datos():
             st.error(f"❌ Error al cargar hoja 'Polizas': {e}")
             df_polizas = pd.DataFrame(columns=[
                 "Tipo Persona", "Nombre/Razón Social", "No. Póliza", "Producto", "Inicio Vigencia",
-                "Fin Vigencia", "RFC", "Forma de Pago", "Banco", "Periodicidad", "Prima Emitida",
-                "Prima Neta", "Monto Periodo", "Aseguradora", "% Comisión", "Comisión", "Estado", "Contacto", "Dirección",
-                "Teléfono", "Correo", "Fecha Nacimiento", "Moneda", "Referenciador"
+                "Fin Vigencia", "RFC", "Forma de Pago", "Banco", "Periodicidad", "Prima Total Emitida",
+                "Prima Neta", "Primer Pago", "Pagos Subsecuentes", "Aseguradora", "% Comisión", "Estado", "Contacto", "Dirección",
+                "Teléfono", "Correo", "Fecha Nacimiento", "Moneda", "Referenciador", "Clave de Emisión"
             ])
 
         try:
@@ -258,8 +258,11 @@ def calcular_cobranza():
         for _, poliza in df_vigentes.iterrows():
             no_poliza = str(poliza.get("No. Póliza", "")).strip()
             periodicidad = str(poliza.get("Periodicidad", "")).upper().strip()
-            # Intentar tomar campo Monto Periodo; si no existe, usar Prima Neta o Prima Emitida
-            monto_periodo = poliza.get("Monto Periodo", poliza.get("Prima Neta", poliza.get("Prima Emitida", 0)))
+            
+            # Obtener montos según periodicidad y número de recibo
+            primer_pago = poliza.get("Primer Pago", 0)
+            pagos_subsecuentes = poliza.get("Pagos Subsecuentes", 0)
+            
             inicio_vigencia_str = poliza.get("Inicio Vigencia", "")
             moneda = poliza.get("Moneda", "MXN")
 
@@ -328,11 +331,16 @@ def calcular_cobranza():
                                                   (df_cobranza["Mes Cobranza"] == mes_cobranza)).any()
 
                             if not existe_registro:
-                                # Parse monto a float robustamente
-                                try:
-                                    monto_float = float(str(monto_periodo).replace(',', '').replace('$', '')) if monto_periodo not in (None, "") else 0.0
-                                except:
-                                    monto_float = 0.0
+                                # Determinar el monto según el número de recibo
+                                if num_recibo == 1:
+                                    monto_float = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
+                                else:
+                                    # Para recibos subsecuentes, usar Pagos Subsecuentes para periodicidades específicas
+                                    if periodicidad in ["MENSUAL", "TRIMESTRAL", "SEMESTRAL"]:
+                                        monto_float = float(str(pagos_subsecuentes).replace(',', '').replace('$', '')) if pagos_subsecuentes not in (None, "") else 0.0
+                                    else:
+                                        # Para anual, seguir usando el primer pago
+                                        monto_float = float(str(primer_pago).replace(',', '').replace('$', '')) if primer_pago not in (None, "") else 0.0
 
                                 dias_restantes = (proxima_fecha - hoy).days
                                 cobranza_mes.append({
@@ -781,8 +789,10 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                 with col2:
                     banco = st.selectbox("Banco", OPCIONES_BANCO, key="registro_banco")
                     periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
-                    prima_emitida = st.text_input("Prima Total Emitida", key="registro_prima")
+                    prima_total_emitida = st.text_input("Prima Total Emitida", key="registro_prima_total")
                     prima_neta = st.text_input("Prima Neta", key="registro_prima_neta")
+                    primer_pago = st.text_input("Primer Pago", key="registro_primer_pago")
+                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="registro_pagos_subsecuentes")
                     aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="registro_aseguradora")
                     comision_porcentaje = st.text_input("% Comisión", key="registro_comision_pct")
                     estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="registro_estado")
@@ -806,7 +816,6 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                                        value=prospecto_data.get("Referenciador", ""),
                                                        placeholder="Origen del cliente/promoción",
                                                        key="registro_referenciador")
-                    monto_periodo = st.text_input("Monto por Periodo", key="registro_monto_periodo")
                     clave_emision = st.text_input("Clave de Emisión", key="registro_clave_emision")
                  
                 # Validar fechas obligatorias
@@ -860,9 +869,10 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                 "Forma de Pago": forma_pago,
                                 "Banco": banco,
                                 "Periodicidad": periodicidad,
-                                "Prima Emitida": prima_emitida,
+                                "Prima Total Emitida": prima_total_emitida,
                                 "Prima Neta": prima_neta,
-                                "Monto Periodo": monto_periodo,
+                                "Primer Pago": primer_pago,
+                                "Pagos Subsecuentes": pagos_subsecuentes,
                                 "Aseguradora": aseguradora,
                                 "% Comisión": comision_porcentaje,
                                 "Estado": estado,
@@ -1091,14 +1101,16 @@ def mostrar_consulta_clientes(df_polizas):
                     st.write(f"**Estado:** {poliza_detalle.get('Estado', 'N/A')}")
                     st.write(f"**Moneda:** {poliza_detalle.get('Moneda', 'N/A')}")
                     st.write(f"**Periodicidad:** {poliza_detalle.get('Periodicidad', 'N/A')}")
+                    st.write(f"**Clave de Emisión:** {poliza_detalle.get('Clave de Emisión', 'N/A')}")
                 
                 with col2:
                     st.write("**Fechas y Montos:**")
                     st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', 'N/A')}")
                     st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin Vigencia', 'N/A')}")
-                    st.write(f"**Prima Emitida:** {poliza_detalle.get('Prima Emitida', 'N/A')}")
+                    st.write(f"**Prima Total Emitida:** {poliza_detalle.get('Prima Total Emitida', 'N/A')}")
                     st.write(f"**Prima Neta:** {poliza_detalle.get('Prima Neta', 'N/A')}")
-                    st.write(f"**Monto Periodo:** {poliza_detalle.get('Monto Periodo', 'N/A')}")
+                    st.write(f"**Primer Pago:** {poliza_detalle.get('Primer Pago', 'N/A')}")
+                    st.write(f"**Pagos Subsecuentes:** {poliza_detalle.get('Pagos Subsecuentes', 'N/A')}")
                     st.write(f"**% Comisión:** {poliza_detalle.get('% Comisión', 'N/A')}")
 
                 # Formulario para actualizar estado de la póliza
@@ -1162,9 +1174,10 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="nueva_poliza_moneda")
 
                 with col2:
-                    prima_emitida = st.text_input("Prima Total Emitida", key="nueva_poliza_prima")
+                    prima_total_emitida = st.text_input("Prima Total Emitida", key="nueva_poliza_prima_total")
                     prima_neta = st.text_input("Prima Neta", key="nueva_poliza_prima_neta")
-                    monto_periodo = st.text_input("Monto por Periodo", key="nueva_poliza_monto_periodo")
+                    primer_pago = st.text_input("Primer Pago", key="nueva_poliza_primer_pago")
+                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="nueva_poliza_pagos_subsecuentes")
                     aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="nueva_poliza_aseguradora")
                     comision_porcentaje = st.text_input("% Comisión", key="nueva_poliza_comision_pct")
                     estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="nueva_poliza_estado")
@@ -1229,9 +1242,10 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                                 "Forma de Pago": forma_pago,
                                 "Banco": banco,
                                 "Periodicidad": periodicidad,
-                                "Prima Emitida": prima_emitida,
+                                "Prima Total Emitida": prima_total_emitida,
                                 "Prima Neta": prima_neta,
-                                "Monto Periodo": monto_periodo,
+                                "Primer Pago": primer_pago,
+                                "Pagos Subsecuentes": pagos_subsecuentes,
                                 "Aseguradora": aseguradora,
                                 "% Comisión": comision_porcentaje,
                                 "Estado": estado,
@@ -1653,12 +1667,81 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                 elif dias_transcurridos >= 5:
                     st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
 
-    # Formulario para el pago (se mantiene igual)
+    # Formulario para el pago
     with st.form("form_pago"):
         if polizas_pendientes and info_poliza is not None:
-            # [Código del formulario de pago existente...]
-            # (Este código se mantiene igual)
-            pass
+            # Solo el campo Monto Pagado con valor 0 por defecto
+            monto_pagado = st.number_input(
+                "Monto Pagado", 
+                min_value=0.0,
+                value=0.0,  # Valor por defecto 0
+                step=0.01, 
+                key="monto_pagado"
+            )
+            
+            # Mostrar la moneda del pago
+            moneda_poliza = info_poliza.get('Moneda', 'MXN')
+            st.write(f"**Moneda del pago:** {moneda_poliza}")
+            
+            fecha_pago = st.text_input(
+                "Fecha de Pago (dd/mm/yyyy)", 
+                value=fecha_actual(), 
+                key="fecha_pago_cob"
+            )
+
+            submitted = st.form_submit_button("💾 Registrar Pago")
+            
+            if submitted:
+                # Validaciones
+                if monto_pagado <= 0:
+                    st.warning("El monto pagado debe ser mayor a 0")
+                else:
+                    valido, error = validar_fecha(fecha_pago)
+                    if not valido:
+                        st.error(f"Fecha de pago: {error}")
+                    else:
+                        mask = (df_cobranza_completa['No. Póliza'] == poliza_seleccionada) & (df_cobranza_completa['Estatus'] == 'Pendiente')
+                        if mask.any():
+                            # Actualizar solo el monto pagado, fecha y estatus
+                            df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
+                            df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
+                            df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
+                            
+                            # Actualizar días de atraso si existe la columna
+                            if 'Días Atraso' in df_cobranza_completa.columns:
+                                proximo_pago = info_poliza.get('Próximo pago', '')
+                                if proximo_pago:
+                                    try:
+                                        proximo_pago_dt = datetime.strptime(proximo_pago, "%d/%m/%Y")
+                                        fecha_pago_dt = datetime.strptime(fecha_pago, "%d/%m/%Y")
+                                        dias_atraso = max(0, (fecha_pago_dt - proximo_pago_dt).days)
+                                        df_cobranza_completa.loc[mask, 'Días Atraso'] = dias_atraso
+                                    except:
+                                        pass
+                        else:
+                            # Si no existe (caso raro), agregamos un registro como pagado
+                            nuevo = {
+                                "No. Póliza": poliza_seleccionada,
+                                "Nombre/Razón Social": info_poliza.get('Nombre/Razón Social', ''),
+                                "Mes Cobranza": info_poliza.get('Mes Cobranza', ''),
+                                "Próximo pago": info_poliza.get('Próximo pago', ''),
+                                "Monto Esperado": info_poliza.get('Monto Esperado', 0),
+                                "Monto Pagado": monto_pagado,
+                                "Fecha Pago": fecha_pago,
+                                "Estatus": "Pagado",
+                                "Periodicidad": info_poliza.get('Periodicidad', ''),
+                                "Moneda": info_poliza.get('Moneda', 'MXN'),
+                                "Recibo": info_poliza.get('Recibo', '')
+                            }
+                            df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
+
+                        if guardar_datos(df_cobranza=df_cobranza_completa):
+                            st.success("✅ Pago registrado correctamente")
+                            st.rerun()
+                        else:
+                            st.error("❌ Error al registrar el pago")
+        else:
+            st.info("Seleccione una póliza para registrar el pago")
 
     # HISTORIAL DE PAGOS CON FILTROS MEJORADOS
     if df_cobranza is not None and not df_cobranza.empty:
@@ -1809,9 +1892,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
