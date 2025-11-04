@@ -1638,25 +1638,25 @@ def mostrar_cobranza(df_polizas, df_cobranza):
            prima_recibo_formateado = f"{prima_recibo:,.2f}"
            st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
             
-            # Mostrar Clave de Emisión
-            st.write(f"**Clave de Emisión:** {info_poliza.get('Clave de Emisión', 'No disponible')}")
-            
-            st.write(f"**Próximo pago:** {info_poliza.get('Próximo pago', '')}")
-            st.write(f"**Periodicidad:** {info_poliza.get('Periodicidad', '')}")
-            st.write(f"**Recibo No.:** {info_poliza.get('Recibo', '')}")
-            
-            # Mostrar días transcurridos
-            dias_transcurridos = calcular_dias_transcurridos(info_poliza.get('Próximo pago', ''))
-            if dias_transcurridos is not None:
-                st.write(f"**Días transcurridos desde vencimiento:** {dias_transcurridos}")
-                
-                # Mostrar alerta según días transcurridos
-                if dias_transcurridos >= 20:
-                    st.error("⚠️ **ALERTA:** Recibo con más de 20 días de vencido - Contacto urgente requerido")
-                elif dias_transcurridos >= 11:
-                    st.warning("⚠️ **ATENCIÓN:** Recibo con 11-20 días de vencido - Seguimiento necesario")
-                elif dias_transcurridos >= 5:
-                    st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
+           # Mostrar Clave de Emisión
+           st.write(f"**Clave de Emisión:** {info_poliza.get('Clave de Emisión', 'No disponible')}")
+           
+           st.write(f"**Próximo pago:** {info_poliza.get('Próximo pago', '')}")
+           st.write(f"**Periodicidad:** {info_poliza.get('Periodicidad', '')}")
+           st.write(f"**Recibo No.:** {info_poliza.get('Recibo', '')}")
+           
+           # Mostrar días transcurridos
+           dias_transcurridos = calcular_dias_transcurridos(info_poliza.get('Próximo pago', ''))
+           if dias_transcurridos is not None:
+               st.write(f"**Días transcurridos desde vencimiento:** {dias_transcurridos}")
+               
+               # Mostrar alerta según días transcurridos
+               if dias_transcurridos >= 20:
+                   st.error("⚠️ **ALERTA:** Recibo con más de 20 días de vencido - Contacto urgente requerido")
+               elif dias_transcurridos >= 11:
+                   st.warning("⚠️ **ATENCIÓN:** Recibo con 11-20 días de vencido - Seguimiento necesario")
+               elif dias_transcurridos >= 5:
+                   st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
 
     # Formulario para el pago
     with st.form("form_pago"):
@@ -1883,10 +1883,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
 
 
