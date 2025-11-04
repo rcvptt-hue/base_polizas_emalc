@@ -315,6 +315,7 @@ def calcular_cobranza():
             # Intentar tomar campo Monto Periodo; si no existe, usar Prima Neta o Prima Emitida
             monto_periodo = poliza.get("Monto Periodo", poliza.get("Prima Neta", poliza.get("Prima Emitida", 0)))
             inicio_vigencia_str = poliza.get("Inicio Vigencia", "")
+            moneda = poliza.get("Moneda", "MXN")
 
             if not no_poliza or not inicio_vigencia_str:
                 continue
@@ -358,6 +359,22 @@ def calcular_cobranza():
                         if (hoy - timedelta(days=10)) <= proxima_fecha <= fecha_limite:
                             mes_cobranza = proxima_fecha.strftime("%m/%Y")
 
+                            # Calcular número de recibo basado en la periodicidad
+                            num_recibo = (meses_proximo // frecuencia) + 1
+                            
+                            # Ajustar el número máximo de recibos según la periodicidad
+                            max_recibos = {
+                                "MENSUAL": 12,
+                                "TRIMESTRAL": 4,
+                                "SEMESTRAL": 2,
+                                "ANUAL": 1
+                            }
+                            
+                            max_recibo = max_recibos.get(periodicidad, 12)
+                            if num_recibo > max_recibo:
+                                # Reiniciar conteo si supera el máximo anual
+                                num_recibo = ((num_recibo - 1) % max_recibo) + 1
+
                             # Verificar si ya existe registro en cobranza
                             existe_registro = False
                             if not df_cobranza.empty and "No. Póliza" in df_cobranza.columns and "Mes Cobranza" in df_cobranza.columns:
@@ -381,7 +398,10 @@ def calcular_cobranza():
                                     "Monto Pagado": 0,
                                     "Fecha Pago": "",
                                     "Estatus": "Pendiente",
-                                    "Días Restantes": dias_restantes
+                                    "Días Restantes": dias_restantes,
+                                    "Periodicidad": periodicidad,
+                                    "Moneda": moneda,
+                                    "Recibo": num_recibo
                                 })
                             break  # Solo agregar el próximo pago encontrado
 
@@ -1230,8 +1250,10 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         
         if info_poliza is not None:
             st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
-            st.write(f"**Monto Esperado:** ${info_poliza.get('Monto Esperado', 0):,.2f}")
+            st.write(f"**Monto Esperado:** {info_poliza.get('Moneda', 'MXN')} {info_poliza.get('Monto Esperado', 0):,.2f}")
             st.write(f"**Fecha Vencimiento:** {info_poliza.get('Fecha Vencimiento', '')}")
+            st.write(f"**Periodicidad:** {info_poliza.get('Periodicidad', '')}")
+            st.write(f"**Recibo No.:** {info_poliza.get('Recibo', '')}")
             if 'Días Restantes' in info_poliza:
                 st.write(f"**Días Restantes:** {info_poliza.get('Días Restantes', '')}")
 
@@ -1240,12 +1262,16 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         if polizas_pendientes and info_poliza is not None:
             # Solo el campo Monto Pagado con valor 0 por defecto
             monto_pagado = st.number_input(
-                "Monto Pagado (MXN)", 
+                "Monto Pagado", 
                 min_value=0.0,
                 value=0.0,  # Valor por defecto 0
                 step=0.01, 
                 key="monto_pagado"
             )
+            
+            # Mostrar la moneda del pago
+            moneda_poliza = info_poliza.get('Moneda', 'MXN')
+            st.write(f"**Moneda del pago:** {moneda_poliza}")
             
             fecha_pago = st.text_input(
                 "Fecha de Pago (dd/mm/yyyy)", 
@@ -1293,7 +1319,10 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                                 "Monto Pagado": monto_pagado,
                                 "Fecha Pago": fecha_pago,
                                 "Estatus": "Pagado",
-                                "Días Restantes": info_poliza.get('Días Restantes', None)
+                                "Días Restantes": info_poliza.get('Días Restantes', None),
+                                "Periodicidad": info_poliza.get('Periodicidad', ''),
+                                "Moneda": info_poliza.get('Moneda', 'MXN'),
+                                "Recibo": info_poliza.get('Recibo', '')
                             }
                             df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
 
@@ -1319,7 +1348,11 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             columnas_numericas = ['Monto Esperado', 'Monto Pagado']
             for col in columnas_numericas:
                 if col in df_pagados.columns:
-                    df_pagados[col] = df_pagados[col].apply(lambda x: f"${x:,.2f}" if isinstance(x, (int, float)) else x)
+                    df_pagados[col] = df_pagados[col].apply(
+                        lambda x: f"${x:,.2f}" if isinstance(x, (int, float)) and col == 'Monto Pagado' else 
+                                 f"{df_pagados[df_pagados.columns[df_pagados.columns.get_loc(col)]].get('Moneda', 'MXN')} {x:,.2f}" 
+                                 if isinstance(x, (int, float)) else x
+                    )
             
             st.dataframe(df_pagados, use_container_width=True)
 
@@ -1463,6 +1496,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
