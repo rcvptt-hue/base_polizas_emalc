@@ -19,7 +19,7 @@ from dateutil.relativedelta import relativedelta
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Gestor de Pólizas EALC",
+    page_title="Gestor de cartera Rizkora",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1463,6 +1463,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
