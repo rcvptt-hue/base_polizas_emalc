@@ -1454,25 +1454,73 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         st.success("🎉 No hay recibos pendientes de pago en los próximos 60 días")
         return
 
-    # Calcular días transcurridos desde la fecha de vencimiento (inicio del recibo)
+    # Función para calcular el próximo pago basado en periodicidad y número de recibo
+    def calcular_proximo_pago(inicio_vigencia_str, periodicidad, num_recibo):
+        if not inicio_vigencia_str or pd.isna(inicio_vigencia_str):
+            return ""
+        
+        try:
+            # Convertir fecha de inicio de vigencia
+            inicio_vigencia = datetime.strptime(str(inicio_vigencia_str), "%d/%m/%Y")
+            
+            # Calcular el próximo pago según periodicidad y número de recibo
+            if periodicidad == "ANUAL":
+                # Para anual, siempre es la misma fecha cada año
+                proximo_pago = inicio_vigencia + relativedelta(years=num_recibo-1)
+            elif periodicidad == "SEMESTRAL":
+                # Para semestral, cada 6 meses
+                proximo_pago = inicio_vigencia + relativedelta(months=6*(num_recibo-1))
+            elif periodicidad == "TRIMESTRAL":
+                # Para trimestral, cada 3 meses
+                proximo_pago = inicio_vigencia + relativedelta(months=3*(num_recibo-1))
+            elif periodicidad == "MENSUAL":
+                # Para mensual, cada mes
+                proximo_pago = inicio_vigencia + relativedelta(months=num_recibo-1)
+            else:
+                # Por defecto, asumir mensual
+                proximo_pago = inicio_vigencia + relativedelta(months=num_recibo-1)
+            
+            return proximo_pago.strftime("%d/%m/%Y")
+        except:
+            return ""
+
+    # Obtener información de inicio de vigencia de las pólizas
+    df_pendientes_con_info = df_pendientes.copy()
+    
+    # Buscar la información de inicio de vigencia para cada póliza
+    for idx, row in df_pendientes_con_info.iterrows():
+        no_poliza = row['No. Póliza']
+        poliza_info = df_polizas[df_polizas['No. Póliza'].astype(str) == str(no_poliza)]
+        
+        if not poliza_info.empty:
+            inicio_vigencia = poliza_info.iloc[0].get('Inicio Vigencia', '')
+            periodicidad = row.get('Periodicidad', 'MENSUAL')
+            recibo = row.get('Recibo', 1)
+            
+            # Calcular próximo pago
+            proximo_pago = calcular_proximo_pago(inicio_vigencia, periodicidad, recibo)
+            df_pendientes_con_info.at[idx, 'Próximo pago'] = proximo_pago
+        else:
+            df_pendientes_con_info.at[idx, 'Próximo pago'] = ""
+
+    # Calcular días transcurridos desde el próximo pago
     hoy = datetime.now().date()
     
-    def calcular_dias_transcurridos(fecha_vencimiento_str):
-        if not fecha_vencimiento_str or pd.isna(fecha_vencimiento_str):
+    def calcular_dias_transcurridos(proximo_pago_str):
+        if not proximo_pago_str or pd.isna(proximo_pago_str) or proximo_pago_str == "":
             return None
         
         try:
-            # Convertir fecha de vencimiento a datetime
-            fecha_vencimiento = datetime.strptime(fecha_vencimiento_str, "%d/%m/%Y").date()
-            # Calcular días transcurridos desde la fecha de vencimiento
-            dias_transcurridos = (hoy - fecha_vencimiento).days
+            # Convertir fecha de próximo pago a datetime
+            proximo_pago = datetime.strptime(proximo_pago_str, "%d/%m/%Y").date()
+            # Calcular días transcurridos desde la fecha de próximo pago
+            dias_transcurridos = (hoy - proximo_pago).days
             return max(0, dias_transcurridos)  # No mostrar negativos
         except:
             return None
 
     # Aplicar cálculo de días transcurridos
-    df_pendientes = df_pendientes.copy()
-    df_pendientes['Días Transcurridos'] = df_pendientes['Fecha Vencimiento'].apply(calcular_dias_transcurridos)
+    df_pendientes_con_info['Días Transcurridos'] = df_pendientes_con_info['Próximo pago'].apply(calcular_dias_transcurridos)
 
     # Formatear montos con 2 decimales y separador de miles
     def formatear_monto(monto):
@@ -1485,24 +1533,24 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             return "0.00"
 
     # Aplicar formato a los montos
-    df_pendientes['Monto Esperado Formateado'] = df_pendientes['Monto Esperado'].apply(formatear_monto)
-    df_pendientes['Monto Pagado Formateado'] = df_pendientes['Monto Pagado'].apply(formatear_monto)
+    df_pendientes_con_info['Monto Esperado Formateado'] = df_pendientes_con_info['Monto Esperado'].apply(formatear_monto)
+    df_pendientes_con_info['Monto Pagado Formateado'] = df_pendientes_con_info['Monto Pagado'].apply(formatear_monto)
 
     # Crear DataFrame para mostrar con las columnas reorganizadas
-    df_mostrar = df_pendientes.copy()
+    df_mostrar = df_pendientes_con_info.copy()
     
     # Definir el orden de columnas según los requerimientos
     columnas_base = [
         'Recibo', 'Periodicidad', 'Moneda', 'Monto Esperado Formateado', 
-        'Monto Pagado Formateado', 'No. Póliza', 'Nombre/Razón Social', 
-        'Mes Cobranza', 'Fecha Vencimiento', 'Fecha Pago', 'Estatus', 'Días Transcurridos'
+        'Monto Pagado Formateado', 'Próximo pago', 'Días Transcurridos',
+        'No. Póliza', 'Nombre/Razón Social', 'Mes Cobranza', 'Fecha Pago', 'Estatus'
     ]
     
     # Filtrar solo las columnas que existen en el DataFrame
     columnas_finales = [col for col in columnas_base if col in df_mostrar.columns]
     
     # Agregar cualquier columna adicional que no esté en la lista base
-    columnas_adicionales = [col for col in df_mostrar.columns if col not in columnas_base and col not in ['Monto Esperado', 'Monto Pagado', 'Días Restantes']]
+    columnas_adicionales = [col for col in df_mostrar.columns if col not in columnas_base and col not in ['Monto Esperado', 'Monto Pagado', 'Días Restantes', 'Fecha Vencimiento']]
     columnas_finales.extend(columnas_adicionales)
     
     # Crear el DataFrame final para mostrar
@@ -1524,14 +1572,15 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         else:
             return 'background-color: #d4edda; color: #155724;'  # Verde (menos de 5 días)
 
+    # Mostrar el DataFrame sin índice
     try:
         styled_df = df_display.style.applymap(
             lambda v: color_row_by_dias_transcurridos(v) if isinstance(v, (int, float)) else '', 
             subset=['Días Transcurridos']
         )
-        st.dataframe(styled_df, use_container_width=True)
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
     except Exception:
-        st.dataframe(df_display, use_container_width=True)
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
 
     # Leyenda de colores
     st.markdown("""
@@ -1552,7 +1601,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         st.session_state.info_poliza_actual = None
 
     # Selección de póliza FUERA del formulario para que actualice inmediatamente
-    polizas_pendientes = df_pendientes["No. Póliza"].tolist()
+    polizas_pendientes = df_pendientes_con_info["No. Póliza"].tolist()
     
     if polizas_pendientes:
         poliza_seleccionada = st.selectbox(
@@ -1565,7 +1614,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         # Actualizar información cuando cambia la selección
         if poliza_seleccionada != st.session_state.poliza_seleccionada_cobranza:
             st.session_state.poliza_seleccionada_cobranza = poliza_seleccionada
-            st.session_state.info_poliza_actual = df_pendientes[df_pendientes["No. Póliza"] == poliza_seleccionada].iloc[0]
+            st.session_state.info_poliza_actual = df_pendientes_con_info[df_pendientes_con_info["No. Póliza"] == poliza_seleccionada].iloc[0]
         
         info_poliza = st.session_state.info_poliza_actual
         
@@ -1576,12 +1625,12 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             monto_esperado_formateado = formatear_monto(info_poliza.get('Monto Esperado', 0))
             st.write(f"**Monto Esperado:** {info_poliza.get('Moneda', 'MXN')} {monto_esperado_formateado}")
             
-            st.write(f"**Fecha Vencimiento:** {info_poliza.get('Fecha Vencimiento', '')}")
+            st.write(f"**Próximo pago:** {info_poliza.get('Próximo pago', '')}")
             st.write(f"**Periodicidad:** {info_poliza.get('Periodicidad', '')}")
             st.write(f"**Recibo No.:** {info_poliza.get('Recibo', '')}")
             
             # Mostrar días transcurridos
-            dias_transcurridos = calcular_dias_transcurridos(info_poliza.get('Fecha Vencimiento', ''))
+            dias_transcurridos = calcular_dias_transcurridos(info_poliza.get('Próximo pago', ''))
             if dias_transcurridos is not None:
                 st.write(f"**Días transcurridos desde vencimiento:** {dias_transcurridos}")
                 
@@ -1635,12 +1684,12 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                             
                             # Actualizar días de atraso si existe la columna
                             if 'Días Atraso' in df_cobranza_completa.columns:
-                                fecha_vencimiento = info_poliza.get('Fecha Vencimiento', '')
-                                if fecha_vencimiento:
+                                proximo_pago = info_poliza.get('Próximo pago', '')
+                                if proximo_pago:
                                     try:
-                                        fecha_venc_dt = datetime.strptime(fecha_vencimiento, "%d/%m/%Y")
+                                        proximo_pago_dt = datetime.strptime(proximo_pago, "%d/%m/%Y")
                                         fecha_pago_dt = datetime.strptime(fecha_pago, "%d/%m/%Y")
-                                        dias_atraso = max(0, (fecha_pago_dt - fecha_venc_dt).days)
+                                        dias_atraso = max(0, (fecha_pago_dt - proximo_pago_dt).days)
                                         df_cobranza_completa.loc[mask, 'Días Atraso'] = dias_atraso
                                     except:
                                         pass
@@ -1650,7 +1699,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                                 "No. Póliza": poliza_seleccionada,
                                 "Nombre/Razón Social": info_poliza.get('Nombre/Razón Social', ''),
                                 "Mes Cobranza": info_poliza.get('Mes Cobranza', ''),
-                                "Fecha Vencimiento": info_poliza.get('Fecha Vencimiento', ''),
+                                "Próximo pago": info_poliza.get('Próximo pago', ''),
                                 "Monto Esperado": info_poliza.get('Monto Esperado', 0),
                                 "Monto Pagado": monto_pagado,
                                 "Fecha Pago": fecha_pago,
@@ -1700,7 +1749,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                 'Monto Pagado Formateado': 'Monto Pagado'
             })
             
-            st.dataframe(df_historial_display, use_container_width=True)
+            st.dataframe(df_historial_display, use_container_width=True, hide_index=True)
          
 # ---- Función principal ----
 def main():
@@ -1768,5 +1817,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
