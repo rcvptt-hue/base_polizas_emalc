@@ -1432,8 +1432,7 @@ def mostrar_renovaciones(df_polizas):
                         if poliza_detalle.get('Dias_Restantes', 0) <= 50:
                             st.warning("⚠️ Esta póliza está próxima a vencer. Contactar al cliente para renovación.")
 
-# 7. Cobranza
-# 7. Cobranza (versión corregida sin Monto Esperado)
+# 7. Cobranza (versión completamente corregida)
 def mostrar_cobranza(df_polizas, df_cobranza):
     st.header("💰 Cobranza")
 
@@ -1543,8 +1542,8 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         except:
             return "0.00"
 
-    # Aplicar formato a los montos
-    df_pendientes_con_info['Prima de Recibo Formateado'] = df_pendientes_con_info['Monto Esperado'].apply(formatear_monto)
+    # Aplicar formato a los montos - CORREGIDO: Solo Prima de Recibo y Monto Pagado
+    df_pendientes_con_info['Prima de Recibo Formateado'] = df_pendientes_con_info['Prima de Recibo'].apply(formatear_monto)
     df_pendientes_con_info['Monto Pagado Formateado'] = df_pendientes_con_info['Monto Pagado'].apply(formatear_monto)
 
     # Crear DataFrame para mostrar con las columnas reorganizadas
@@ -1561,7 +1560,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
     columnas_finales = [col for col in columnas_base if col in df_mostrar.columns]
     
     # Agregar cualquier columna adicional que no esté en la lista base
-    columnas_adicionales = [col for col in df_mostrar.columns if col not in columnas_base and col not in ['Monto Esperado', 'Monto Pagado', 'Días Restantes', 'Fecha Vencimiento']]
+    columnas_adicionales = [col for col in df_mostrar.columns if col not in columnas_base and col not in ['Prima de Recibo', 'Monto Pagado', 'Días Restantes', 'Fecha Vencimiento']]
     columnas_finales.extend(columnas_adicionales)
     
     # Crear el DataFrame final para mostrar
@@ -1632,7 +1631,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
         if info_poliza is not None:
            st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
            
-           # Mostrar Prima de Recibo directamente (ya no hay Monto Esperado)
+           # Mostrar Prima de Recibo directamente
            prima_recibo = info_poliza.get('Prima de Recibo', 0)
            moneda = info_poliza.get('Moneda', 'MXN')
            prima_recibo_formateado = f"{prima_recibo:,.2f}"
@@ -1716,7 +1715,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                                 "Nombre/Razón Social": info_poliza.get('Nombre/Razón Social', ''),
                                 "Mes Cobranza": info_poliza.get('Mes Cobranza', ''),
                                 "Próximo pago": info_poliza.get('Próximo pago', ''),
-                                "Monto Esperado": info_poliza.get('Monto Esperado', 0),
+                                "Prima de Recibo": info_poliza.get('Prima de Recibo', 0),  # CORREGIDO: Prima de Recibo en lugar de Monto Esperado
                                 "Monto Pagado": monto_pagado,
                                 "Fecha Pago": fecha_pago,
                                 "Estatus": "Pagado",
@@ -1794,8 +1793,8 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             if mes_seleccionado != "Todos":
                 df_filtrado = df_filtrado[df_filtrado['Mes'] == mes_seleccionado]
             
-            # Formatear montos para el historial
-            df_filtrado['Prima de Recibo Formateado'] = df_filtrado['Monto Esperado'].apply(formatear_monto)
+            # Formatear montos para el historial - CORREGIDO: Solo Prima de Recibo y Monto Pagado
+            df_filtrado['Prima de Recibo Formateado'] = df_filtrado['Prima de Recibo'].apply(formatear_monto)
             df_filtrado['Monto Pagado Formateado'] = df_filtrado['Monto Pagado'].apply(formatear_monto)
             
             # Columnas para mostrar en el historial
@@ -1883,5 +1882,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
