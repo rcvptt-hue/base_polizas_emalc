@@ -119,9 +119,9 @@ def cargar_datos():
             df_cobranza = pd.DataFrame(worksheet_cobranza.get_all_records())
         except Exception as e:
             df_cobranza = pd.DataFrame(columns=[
-                "No. Póliza", "Mes Cobranza", "Monto Esperado", "Monto Pagado",
+                "No. Póliza", "Mes Cobranza", "Monto Recibo", "Monto Pagado",
                 "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes",
-                "Periodicidad", "Moneda", "Recibo"
+                "Periodicidad", "Moneda", "Recibo", "Clave de Emisión"
             ])
 
         try:
@@ -1893,4 +1893,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
