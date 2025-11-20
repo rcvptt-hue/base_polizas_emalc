@@ -261,7 +261,7 @@ def calcular_cobranza():
             return pd.DataFrame()
 
         hoy = datetime.now()
-        fecha_limite = hoy + timedelta(days=60)
+        fecha_limite = hoy + timedelta(days=29)
         cobranza_mes = []
 
         # Función auxiliar para limpiar montos
@@ -1926,6 +1926,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
