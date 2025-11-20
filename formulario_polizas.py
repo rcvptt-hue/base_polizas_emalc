@@ -1638,7 +1638,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             # Formatear monto
             monto_formateado = formatear_monto(row.get('Prima de Recibo', 0))
             # Crear descripción amigable
-            descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - {monto_formateado} {row.get('Moneda', 'MXN')} - Vence: {row.get('Próximo pago', '')}"
+            descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - {monto_formateado} {row.get('Moneda', 'MXN')} - {row.get('Próximo pago', '')}"
             opciones_cobranza.append({
                 'descripcion': descripcion,
                 'id_cobranza': f"{row['No. Póliza']}_R{row['Recibo']}",
@@ -1924,6 +1924,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
