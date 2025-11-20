@@ -1638,7 +1638,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             # Formatear monto
             monto_formateado = formatear_monto(row.get('Prima de Recibo', 0))
             # Crear descripción amigable
-            descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - {monto_formateado} {row.get('Moneda', 'MXN')} - {row.get('Próximo pago', '')}"
+            descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - {monto_formateado} {row.get('Moneda', 'MXN')} - Vence: {row.get('Próximo pago', '')}"
             opciones_cobranza.append({
                 'descripcion': descripcion,
                 'id_cobranza': f"{row['No. Póliza']}_R{row['Recibo']}",
@@ -1691,89 +1691,90 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                         elif dias_transcurridos >= 5:
                             st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
 
-    # Formulario para el pago
-    with st.form("form_pago"):
-        if st.session_state.info_cobranza_actual is not None:
-            info_cobranza = st.session_state.info_cobranza_actual
-            
-            # Solo el campo Monto Pagado con valor 0 por defecto
-            monto_pagado = st.number_input(
-                "Monto Pagado", 
-                min_value=0.0,
-                value=0.0,  # Valor por defecto 0
-                step=0.01, 
-                key="monto_pagado"
-            )
-            
-            # Mostrar la moneda del pago
-            moneda_cobranza = info_cobranza.get('Moneda', 'MXN')
-            st.write(f"**Moneda del pago:** {moneda_cobranza}")
-            
-            fecha_pago = st.text_input(
-                "Fecha de Pago (dd/mm/yyyy)", 
-                value=fecha_actual(), 
-                key="fecha_pago_cob"
-            )
-
-            submitted = st.form_submit_button("💾 Registrar Pago")
-            
-            if submitted:
-                # Validaciones
-                if monto_pagado <= 0:
-                    st.warning("El monto pagado debe ser mayor a 0")
-                else:
-                    valido, error = validar_fecha(fecha_pago)
-                    if not valido:
-                        st.error(f"Fecha de pago: {error}")
-                    else:
-                        # Buscar el registro específico por ID único
-                        mask = (
-                            (df_cobranza_completa['No. Póliza'] == info_cobranza['No. Póliza']) & 
-                            (df_cobranza_completa['Recibo'] == info_cobranza['Recibo'])
+                    # Formulario para el pago - SOLO SE MUESTRA CUANDO HAY UN RECIBO SELECCIONADO
+                    with st.form("form_pago"):
+                        # Solo el campo Monto Pagado con valor 0 por defecto
+                        monto_pagado = st.number_input(
+                            "Monto Pagado", 
+                            min_value=0.0,
+                            value=0.0,  # Valor por defecto 0
+                            step=0.01, 
+                            key="monto_pagado"
                         )
                         
-                        if mask.any():
-                            # Actualizar solo el monto pagado, fecha y estatus
-                            df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
-                            df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
-                            df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
-                            
-                            # Actualizar días de atraso si existe la columna
-                            if 'Días Atraso' in df_cobranza_completa.columns:
-                                proximo_pago = info_cobranza.get('Próximo pago', '')
-                                if proximo_pago:
-                                    try:
-                                        proximo_pago_dt = datetime.strptime(proximo_pago, "%d/%m/%Y")
-                                        fecha_pago_dt = datetime.strptime(fecha_pago, "%d/%m/%Y")
-                                        dias_atraso = max(0, (fecha_pago_dt - proximo_pago_dt).days)
-                                        df_cobranza_completa.loc[mask, 'Días Atraso'] = dias_atraso
-                                    except:
-                                        pass
-                        else:
-                            # Si no existe (caso raro), agregamos un registro como pagado
-                            nuevo = {
-                                "No. Póliza": info_cobranza['No. Póliza'],
-                                "Nombre/Razón Social": info_cobranza.get('Nombre/Razón Social', ''),
-                                "Mes Cobranza": info_cobranza.get('Mes Cobranza', ''),
-                                "Próximo pago": info_cobranza.get('Próximo pago', ''),
-                                "Prima de Recibo": info_cobranza.get('Prima de Recibo', 0),
-                                "Monto Pagado": monto_pagado,
-                                "Fecha Pago": fecha_pago,
-                                "Estatus": "Pagado",
-                                "Periodicidad": info_cobranza.get('Periodicidad', ''),
-                                "Moneda": info_cobranza.get('Moneda', 'MXN'),
-                                "Recibo": info_cobranza.get('Recibo', ''),
-                                "ID_Cobranza": f"{info_cobranza['No. Póliza']}_R{info_cobranza.get('Recibo', '')}"
-                            }
-                            df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
+                        # Mostrar la moneda del pago
+                        moneda_cobranza = info_cobranza.get('Moneda', 'MXN')
+                        st.write(f"**Moneda del pago:** {moneda_cobranza}")
+                        
+                        fecha_pago = st.text_input(
+                            "Fecha de Pago (dd/mm/yyyy)", 
+                            value=fecha_actual(), 
+                            key="fecha_pago_cob"
+                        )
 
-                        if guardar_datos(df_cobranza=df_cobranza_completa):
-                            st.success("✅ Pago registrado correctamente")
-                            st.rerun()
-                        else:
-                            st.error("❌ Error al registrar el pago")
+                        submitted = st.form_submit_button("💾 Registrar Pago")
+                        
+                        if submitted:
+                            # Validaciones
+                            if monto_pagado <= 0:
+                                st.warning("El monto pagado debe ser mayor a 0")
+                            else:
+                                valido, error = validar_fecha(fecha_pago)
+                                if not valido:
+                                    st.error(f"Fecha de pago: {error}")
+                                else:
+                                    # Buscar el registro específico por ID único
+                                    mask = (
+                                        (df_cobranza_completa['No. Póliza'] == info_cobranza['No. Póliza']) & 
+                                        (df_cobranza_completa['Recibo'] == info_cobranza['Recibo'])
+                                    )
+                                    
+                                    if mask.any():
+                                        # Actualizar solo el monto pagado, fecha y estatus
+                                        df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
+                                        df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
+                                        df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
+                                        
+                                        # Actualizar días de atraso si existe la columna
+                                        if 'Días Atraso' in df_cobranza_completa.columns:
+                                            proximo_pago = info_cobranza.get('Próximo pago', '')
+                                            if proximo_pago:
+                                                try:
+                                                    proximo_pago_dt = datetime.strptime(proximo_pago, "%d/%m/%Y")
+                                                    fecha_pago_dt = datetime.strptime(fecha_pago, "%d/%m/%Y")
+                                                    dias_atraso = max(0, (fecha_pago_dt - proximo_pago_dt).days)
+                                                    df_cobranza_completa.loc[mask, 'Días Atraso'] = dias_atraso
+                                                except:
+                                                    pass
+                                    else:
+                                        # Si no existe (caso raro), agregamos un registro como pagado
+                                        nuevo = {
+                                            "No. Póliza": info_cobranza['No. Póliza'],
+                                            "Nombre/Razón Social": info_cobranza.get('Nombre/Razón Social', ''),
+                                            "Mes Cobranza": info_cobranza.get('Mes Cobranza', ''),
+                                            "Próximo pago": info_cobranza.get('Próximo pago', ''),
+                                            "Prima de Recibo": info_cobranza.get('Prima de Recibo', 0),
+                                            "Monto Pagado": monto_pagado,
+                                            "Fecha Pago": fecha_pago,
+                                            "Estatus": "Pagado",
+                                            "Periodicidad": info_cobranza.get('Periodicidad', ''),
+                                            "Moneda": info_cobranza.get('Moneda', 'MXN'),
+                                            "Recibo": info_cobranza.get('Recibo', ''),
+                                            "ID_Cobranza": f"{info_cobranza['No. Póliza']}_R{info_cobranza.get('Recibo', '')}"
+                                        }
+                                        df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
+
+                                    if guardar_datos(df_cobranza=df_cobranza_completa):
+                                        st.success("✅ Pago registrado correctamente")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Error al registrar el pago")
+            else:
+                st.info("Seleccione un recibo de cobranza para registrar el pago")
         else:
-            st.info("Seleccione un recibo de cobranza para registrar el pago")
+            st.info("No hay recibos pendientes disponibles para seleccionar")
+    else:
+        st.info("No hay recibos pendientes para mostrar")
 
     # HISTORIAL DE PAGOS CON FILTROS MEJORADOS
     if df_cobranza is not None and not df_cobranza.empty:
@@ -1924,6 +1925,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
