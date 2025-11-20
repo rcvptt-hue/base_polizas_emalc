@@ -240,161 +240,158 @@ def fecha_actual():
 # =========================
 # 🔧 FUNCIÓN CALCULAR_COBRANZA (Versión final mejorada)
 # =========================
-# En la función mostrar_cobranza, reemplazar la sección de selección de póliza:
+def calcular_cobranza():
+    """
+    Calcula los registros de cobranza basándose en las pólizas vigentes.
+    - Toma la fecha de Inicio Vigencia como primer pago
+    - Para periodicidad ANUAL: genera un solo registro anual
+    - Para otras periodicidades: genera múltiples registros según la periodicidad
+    - Usa Primer Pago para el primer registro y Pagos Subsecuentes para los siguientes
+    - Evita duplicados verificando por No. Póliza y número de recibo
+    """
+    try:
+        _, df_polizas, df_cobranza, _ = cargar_datos()
 
-# Formulario para registrar pagos
-st.subheader("Registrar Pago")
+        if df_polizas.empty:
+            return pd.DataFrame()
 
-# Inicializar estado para la selección de cobranza
-if 'cobranza_seleccionada' not in st.session_state:
-    st.session_state.cobranza_seleccionada = None
-if 'info_cobranza_actual' not in st.session_state:
-    st.session_state.info_cobranza_actual = None
+        # Filtrar pólizas vigentes
+        df_vigentes = df_polizas[df_polizas["Estado"].astype(str).str.upper() == "VIGENTE"]
+        if df_vigentes.empty:
+            return pd.DataFrame()
 
-# Crear lista de opciones para selección individual de recibos
-if not df_pendientes_con_info.empty:
-    # Crear identificador único para cada recibo
-    opciones_cobranza = []
-    for idx, row in df_pendientes_con_info.iterrows():
-        # Formatear monto
-        monto_formateado = formatear_monto(row.get('Prima de Recibo', 0))
-        # Crear descripción amigable
-        descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - {monto_formateado} {row.get('Moneda', 'MXN')} - Vence: {row.get('Próximo pago', '')}"
-        opciones_cobranza.append({
-            'descripcion': descripcion,
-            'id_cobranza': f"{row['No. Póliza']}_R{row['Recibo']}",
-            'datos': row
-        })
-    
-    # Selector de recibo específico
-    if opciones_cobranza:
-        opcion_seleccionada = st.selectbox(
-            "Seleccionar Recibo de Cobranza",
-            options=[""] + [opc['descripcion'] for opc in opciones_cobranza],
-            key="select_recibo_cobranza"
-        )
-        
-        if opcion_seleccionada:
-            # Encontrar los datos del recibo seleccionado
-            recibo_seleccionado = next((opc for opc in opciones_cobranza if opc['descripcion'] == opcion_seleccionada), None)
+        hoy = datetime.now()
+        fecha_limite = hoy + timedelta(days=60)
+        cobranza_mes = []
+
+        # Función auxiliar para limpiar montos
+        def parse_monto(valor):
+            if pd.isna(valor) or str(valor).strip() == "":
+                return 0.0
+            valor = str(valor).replace('$', '').replace(',', '').replace(' ', '').strip()
+            try:
+                return float(valor)
+            except:
+                return 0.0
+
+        # Función para convertir fechas de manera segura
+        def safe_date_convert(date_str):
+            if pd.isna(date_str) or not date_str:
+                return None
+            for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    return datetime.strptime(str(date_str).strip(), fmt)
+                except ValueError:
+                    continue
+            return None
+
+        for _, poliza in df_vigentes.iterrows():
+            no_poliza = str(poliza.get("No. Póliza", "")).strip()
+            periodicidad = str(poliza.get("Periodicidad", "")).upper().strip()
+            moneda = poliza.get("Moneda", "MXN")
             
-            if recibo_seleccionado:
-                info_cobranza = recibo_seleccionado['datos']
-                st.session_state.cobranza_seleccionada = recibo_seleccionado['id_cobranza']
-                st.session_state.info_cobranza_actual = info_cobranza
-                
-                # Mostrar información del recibo seleccionado
-                st.write(f"**Recibo seleccionado:** {info_cobranza.get('Recibo', '')}")
-                st.write(f"**Cliente:** {info_cobranza.get('Nombre/Razón Social', '')}")
-                
-                # Mostrar Prima de Recibo directamente
-                prima_recibo = info_cobranza.get('Prima de Recibo', 0)
-                moneda = info_cobranza.get('Moneda', 'MXN')
-                prima_recibo_formateado = formatear_monto(prima_recibo)
-                st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
-                
-                # Mostrar Clave de Emisión
-                st.write(f"**Clave de Emisión:** {info_cobranza.get('Clave de Emisión', 'No disponible')}")
-                
-                st.write(f"**Próximo pago:** {info_cobranza.get('Próximo pago', '')}")
-                st.write(f"**Periodicidad:** {info_cobranza.get('Periodicidad', '')}")
-                
-                # Mostrar días transcurridos
-                dias_transcurridos = calcular_dias_transcurridos(info_cobranza.get('Próximo pago', ''))
-                if dias_transcurridos is not None:
-                    st.write(f"**Días transcurridos desde vencimiento:** {dias_transcurridos}")
-                    
-                    # Mostrar alerta según días transcurridos
-                    if dias_transcurridos >= 20:
-                        st.error("⚠️ **ALERTA:** Recibo con más de 20 días de vencido - Contacto urgente requerido")
-                    elif dias_transcurridos >= 11:
-                        st.warning("⚠️ **ATENCIÓN:** Recibo con 11-20 días de vencido - Seguimiento necesario")
-                    elif dias_transcurridos >= 5:
-                        st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
+            # Limpiar montos
+            primer_pago = parse_monto(poliza.get("Primer Pago", 0))
+            pagos_subsecuentes = parse_monto(poliza.get("Pagos Subsecuentes", 0))
+            
+            # Si no hay pago subsecuente, usar el primer pago como default
+            if pagos_subsecuentes == 0:
+                pagos_subsecuentes = primer_pago
 
-# Formulario para el pago
-with st.form("form_pago"):
-    if st.session_state.info_cobranza_actual is not None:
-        info_cobranza = st.session_state.info_cobranza_actual
-        
-        # Solo el campo Monto Pagado con valor 0 por defecto
-        monto_pagado = st.number_input(
-            "Monto Pagado", 
-            min_value=0.0,
-            value=0.0,  # Valor por defecto 0
-            step=0.01, 
-            key="monto_pagado"
-        )
-        
-        # Mostrar la moneda del pago
-        moneda_cobranza = info_cobranza.get('Moneda', 'MXN')
-        st.write(f"**Moneda del pago:** {moneda_cobranza}")
-        
-        fecha_pago = st.text_input(
-            "Fecha de Pago (dd/mm/yyyy)", 
-            value=fecha_actual(), 
-            key="fecha_pago_cob"
-        )
+            inicio_vigencia_str = poliza.get("Inicio Vigencia", "")
+            if not no_poliza or not inicio_vigencia_str:
+                continue
 
-        submitted = st.form_submit_button("💾 Registrar Pago")
-        
-        if submitted:
-            # Validaciones
-            if monto_pagado <= 0:
-                st.warning("El monto pagado debe ser mayor a 0")
-            else:
-                valido, error = validar_fecha(fecha_pago)
-                if not valido:
-                    st.error(f"Fecha de pago: {error}")
+            # Convertir fecha de inicio de vigencia
+            inicio_vigencia = safe_date_convert(inicio_vigencia_str)
+            if inicio_vigencia is None:
+                continue
+
+            fecha_actual_calc = inicio_vigencia
+            num_recibo = 1
+            max_recibos = 24  # Aumentamos el límite para cubrir 2 años completos
+
+            while num_recibo <= max_recibos:
+                # Solo incluir pagos en el rango relevante (10 días atrás y 60 adelante)
+                if (hoy - timedelta(days=10)) <= fecha_actual_calc <= fecha_limite:
+                    mes_cobranza = fecha_actual_calc.strftime("%m/%Y")
+                    fecha_vencimiento = fecha_actual_calc.strftime("%d/%m/%Y")
+
+                    # Verificar si ya existe este registro en cobranza usando No. Póliza + Recibo
+                    existe_registro = False
+                    if not df_cobranza.empty and "No. Póliza" in df_cobranza.columns and "Recibo" in df_cobranza.columns:
+                        existe_registro = (
+                            (df_cobranza["No. Póliza"].astype(str).str.strip() == no_poliza) &
+                            (df_cobranza["Recibo"] == num_recibo)
+                        ).any()
+
+                    if not existe_registro:
+                        # Determinar monto según el número de recibo
+                        if num_recibo == 1:
+                            monto_prima = primer_pago
+                        else:
+                            monto_prima = pagos_subsecuentes
+
+                        dias_restantes = (fecha_actual_calc - hoy).days
+
+                        cobranza_mes.append({
+                            "No. Póliza": no_poliza,
+                            "Nombre/Razón Social": poliza.get("Nombre/Razón Social", ""),
+                            "Mes Cobranza": mes_cobranza,
+                            "Fecha Vencimiento": fecha_vencimiento,
+                            "Prima de Recibo": monto_prima,
+                            "Monto Pagado": 0,
+                            "Fecha Pago": "",
+                            "Estatus": "Pendiente",
+                            "Días Restantes": dias_restantes,
+                            "Periodicidad": periodicidad,
+                            "Moneda": moneda,
+                            "Recibo": num_recibo,
+                            "ID_Cobranza": f"{no_poliza}_R{num_recibo}"  # Identificador único
+                        })
+
+                # Avanzar a la siguiente fecha según periodicidad
+                if periodicidad == "ANUAL":
+                    # Para anual, solo generamos un registro y salimos
+                    if num_recibo == 1:
+                        fecha_actual_calc += relativedelta(years=1)
+                    else:
+                        break
+                elif periodicidad == "TRIMESTRAL":
+                    fecha_actual_calc += relativedelta(months=3)
+                elif periodicidad == "SEMESTRAL":
+                    fecha_actual_calc += relativedelta(months=6)
+                elif periodicidad == "MENSUAL":
+                    fecha_actual_calc += relativedelta(months=1)
                 else:
-                    # Buscar el registro específico por ID único
-                    mask = (
-                        (df_cobranza_completa['No. Póliza'] == info_cobranza['No. Póliza']) & 
-                        (df_cobranza_completa['Recibo'] == info_cobranza['Recibo'])
-                    )
-                    
-                    if mask.any():
-                        # Actualizar solo el monto pagado, fecha y estatus
-                        df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
-                        df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
-                        df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
-                        
-                        # Actualizar días de atraso si existe la columna
-                        if 'Días Atraso' in df_cobranza_completa.columns:
-                            proximo_pago = info_cobranza.get('Próximo pago', '')
-                            if proximo_pago:
-                                try:
-                                    proximo_pago_dt = datetime.strptime(proximo_pago, "%d/%m/%Y")
-                                    fecha_pago_dt = datetime.strptime(fecha_pago, "%d/%m/%Y")
-                                    dias_atraso = max(0, (fecha_pago_dt - proximo_pago_dt).days)
-                                    df_cobranza_completa.loc[mask, 'Días Atraso'] = dias_atraso
-                                except:
-                                    pass
-                    else:
-                        # Si no existe (caso raro), agregamos un registro como pagado
-                        nuevo = {
-                            "No. Póliza": info_cobranza['No. Póliza'],
-                            "Nombre/Razón Social": info_cobranza.get('Nombre/Razón Social', ''),
-                            "Mes Cobranza": info_cobranza.get('Mes Cobranza', ''),
-                            "Próximo pago": info_cobranza.get('Próximo pago', ''),
-                            "Prima de Recibo": info_cobranza.get('Prima de Recibo', 0),
-                            "Monto Pagado": monto_pagado,
-                            "Fecha Pago": fecha_pago,
-                            "Estatus": "Pagado",
-                            "Periodicidad": info_cobranza.get('Periodicidad', ''),
-                            "Moneda": info_cobranza.get('Moneda', 'MXN'),
-                            "Recibo": info_cobranza.get('Recibo', ''),
-                            "ID_Cobranza": f"{info_cobranza['No. Póliza']}_R{info_cobranza.get('Recibo', '')}"
-                        }
-                        df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
+                    # Por defecto mensual
+                    fecha_actual_calc += relativedelta(months=1)
 
-                    if guardar_datos(df_cobranza=df_cobranza_completa):
-                        st.success("✅ Pago registrado correctamente")
-                        st.rerun()
-                    else:
-                        st.error("❌ Error al registrar el pago")
-    else:
-        st.info("Seleccione un recibo de cobranza para registrar el pago")
+                num_recibo += 1
+
+                # Para anual, solo generamos un pago por año en el rango
+                if periodicidad == "ANUAL" and num_recibo > 1:
+                    break
+
+        # Crear DataFrame
+        df_resultado = pd.DataFrame(cobranza_mes)
+        if df_resultado.empty:
+            return df_resultado
+
+        # Eliminar duplicados por ID único
+        df_resultado = df_resultado.drop_duplicates(
+            subset=["ID_Cobranza"], 
+            keep="last"
+        )
+
+        print(f"✅ Cobranza generada: {len(df_resultado)} registros")
+        return df_resultado
+
+    except Exception as e:
+        st.error(f"Error al calcular cobranza: {e}")
+        import traceback
+        st.error(f"Detalle del error: {traceback.format_exc()}")
+        return pd.DataFrame()
 
 # Función para manejar el cambio de pestaña
 def cambiar_pestaña(nombre_pestaña):
@@ -1484,9 +1481,15 @@ def mostrar_cobranza(df_polizas, df_cobranza):
 
     # Combinar con datos existentes de cobranza
     if df_cobranza is not None and not df_cobranza.empty:
-        df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_proxima]).drop_duplicates(
-            subset=['No. Póliza', 'Mes Cobranza'], keep='last'
-        )
+        # Usar ID_Cobranza para evitar duplicados si existe, si no usar No. Póliza y Recibo
+        if 'ID_Cobranza' in df_cobranza.columns and 'ID_Cobranza' in df_cobranza_proxima.columns:
+            df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_proxima]).drop_duplicates(
+                subset=['ID_Cobranza'], keep='last'
+            )
+        else:
+            df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_proxima]).drop_duplicates(
+                subset=['No. Póliza', 'Recibo'], keep='last'
+            )
     else:
         df_cobranza_completa = df_cobranza_proxima
 
@@ -1499,36 +1502,6 @@ def mostrar_cobranza(df_polizas, df_cobranza):
     if df_pendientes.empty:
         st.success("🎉 No hay recibos pendientes de pago en los próximos 60 días")
         return
-
-    # Función para calcular el próximo pago basado en periodicidad y número de recibo
-    def calcular_proximo_pago(inicio_vigencia_str, periodicidad, num_recibo):
-        if not inicio_vigencia_str or pd.isna(inicio_vigencia_str):
-            return ""
-        
-        try:
-            # Convertir fecha de inicio de vigencia
-            inicio_vigencia = datetime.strptime(str(inicio_vigencia_str), "%d/%m/%Y")
-            
-            # Calcular el próximo pago según periodicidad y número de recibo
-            if periodicidad == "ANUAL":
-                # Para anual, siempre es la misma fecha cada año
-                proximo_pago = inicio_vigencia + relativedelta(years=num_recibo-1)
-            elif periodicidad == "SEMESTRAL":
-                # Para semestral, cada 6 meses
-                proximo_pago = inicio_vigencia + relativedelta(months=6*(num_recibo-1))
-            elif periodicidad == "TRIMESTRAL":
-                # Para trimestral, cada 3 meses
-                proximo_pago = inicio_vigencia + relativedelta(months=3*(num_recibo-1))
-            elif periodicidad == "MENSUAL":
-                # Para mensual, cada mes
-                proximo_pago = inicio_vigencia + relativedelta(months=num_recibo-1)
-            else:
-                # Por defecto, asumir mensual
-                proximo_pago = inicio_vigencia + relativedelta(months=num_recibo-1)
-            
-            return proximo_pago.strftime("%d/%m/%Y")
-        except:
-            return ""
 
     # Obtener información de inicio de vigencia y clave de emisión de las pólizas
     df_pendientes_con_info = df_pendientes.copy()
@@ -1544,8 +1517,8 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             recibo = row.get('Recibo', 1)
             clave_emision = poliza_info.iloc[0].get('Clave de Emisión', '')
             
-            # Calcular próximo pago
-            proximo_pago = calcular_proximo_pago(inicio_vigencia, periodicidad, recibo)
+            # Calcular próximo pago (ya lo tenemos en Fecha Vencimiento, pero lo dejamos por si acaso)
+            proximo_pago = row.get('Fecha Vencimiento', '')
             df_pendientes_con_info.at[idx, 'Próximo pago'] = proximo_pago
             df_pendientes_con_info.at[idx, 'Clave de Emisión'] = clave_emision
         else:
@@ -1572,7 +1545,6 @@ def mostrar_cobranza(df_polizas, df_cobranza):
     df_pendientes_con_info['Días Transcurridos'] = df_pendientes_con_info['Próximo pago'].apply(calcular_dias_transcurridos)
 
     # Formatear montos con 2 decimales y separador de miles
-    # Función mejorada para formatear montos
     def formatear_monto(monto):
         try:
             if pd.isna(monto) or monto == "" or monto is None:
@@ -1590,7 +1562,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             print(f"Error formateando monto '{monto}': {e}")
             return "0.00"
 
-    # Aplicar formato a los montos - VERSIÓN MEJORADA
+    # Aplicar formato a los montos
     df_pendientes_con_info['Prima de Recibo Formateado'] = df_pendientes_con_info['Prima de Recibo'].apply(formatear_monto)
     df_pendientes_con_info['Monto Pagado Formateado'] = df_pendientes_con_info['Monto Pagado'].apply(formatear_monto)
 
@@ -1651,63 +1623,79 @@ def mostrar_cobranza(df_polizas, df_cobranza):
 
     # Formulario para registrar pagos
     st.subheader("Registrar Pago")
-    
-    # Inicializar estado para la selección de póliza
-    if 'poliza_seleccionada_cobranza' not in st.session_state:
-        st.session_state.poliza_seleccionada_cobranza = None
-    if 'info_poliza_actual' not in st.session_state:
-        st.session_state.info_poliza_actual = None
 
-    # Selección de póliza FUERA del formulario para que actualice inmediatamente
-    polizas_pendientes = df_pendientes_con_info["No. Póliza"].tolist()
-    
-    if polizas_pendientes:
-        poliza_seleccionada = st.selectbox(
-            "Seleccionar Póliza", 
-            polizas_pendientes, 
-            key="select_pol_pago",
-            index=0
-        )
+    # Inicializar estado para la selección de cobranza
+    if 'cobranza_seleccionada' not in st.session_state:
+        st.session_state.cobranza_seleccionada = None
+    if 'info_cobranza_actual' not in st.session_state:
+        st.session_state.info_cobranza_actual = None
+
+    # Crear lista de opciones para selección individual de recibos
+    if not df_pendientes_con_info.empty:
+        # Crear identificador único para cada recibo
+        opciones_cobranza = []
+        for idx, row in df_pendientes_con_info.iterrows():
+            # Formatear monto
+            monto_formateado = formatear_monto(row.get('Prima de Recibo', 0))
+            # Crear descripción amigable
+            descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - {monto_formateado} {row.get('Moneda', 'MXN')} - Vence: {row.get('Próximo pago', '')}"
+            opciones_cobranza.append({
+                'descripcion': descripcion,
+                'id_cobranza': f"{row['No. Póliza']}_R{row['Recibo']}",
+                'datos': row
+            })
         
-        # Actualizar información cuando cambia la selección
-        if poliza_seleccionada != st.session_state.poliza_seleccionada_cobranza:
-            st.session_state.poliza_seleccionada_cobranza = poliza_seleccionada
-            st.session_state.info_poliza_actual = df_pendientes_con_info[df_pendientes_con_info["No. Póliza"] == poliza_seleccionada].iloc[0]
-        
-        info_poliza = st.session_state.info_poliza_actual
-        
-        if info_poliza is not None:
-           st.write(f"**Cliente:** {info_poliza.get('Nombre/Razón Social', '')}")
-           
-           # Mostrar Prima de Recibo directamente
-           prima_recibo = info_poliza.get('Prima de Recibo', 0)
-           moneda = info_poliza.get('Moneda', 'MXN')
-           prima_recibo_formateado = f"{prima_recibo:,.2f}"
-           st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
+        # Selector de recibo específico
+        if opciones_cobranza:
+            opcion_seleccionada = st.selectbox(
+                "Seleccionar Recibo de Cobranza",
+                options=[""] + [opc['descripcion'] for opc in opciones_cobranza],
+                key="select_recibo_cobranza"
+            )
             
-           # Mostrar Clave de Emisión
-           st.write(f"**Clave de Emisión:** {info_poliza.get('Clave de Emisión', 'No disponible')}")
-           
-           st.write(f"**Próximo pago:** {info_poliza.get('Próximo pago', '')}")
-           st.write(f"**Periodicidad:** {info_poliza.get('Periodicidad', '')}")
-           st.write(f"**Recibo No.:** {info_poliza.get('Recibo', '')}")
-           
-           # Mostrar días transcurridos
-           dias_transcurridos = calcular_dias_transcurridos(info_poliza.get('Próximo pago', ''))
-           if dias_transcurridos is not None:
-               st.write(f"**Días transcurridos desde vencimiento:** {dias_transcurridos}")
-               
-               # Mostrar alerta según días transcurridos
-               if dias_transcurridos >= 20:
-                   st.error("⚠️ **ALERTA:** Recibo con más de 20 días de vencido - Contacto urgente requerido")
-               elif dias_transcurridos >= 11:
-                   st.warning("⚠️ **ATENCIÓN:** Recibo con 11-20 días de vencido - Seguimiento necesario")
-               elif dias_transcurridos >= 5:
-                   st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
+            if opcion_seleccionada:
+                # Encontrar los datos del recibo seleccionado
+                recibo_seleccionado = next((opc for opc in opciones_cobranza if opc['descripcion'] == opcion_seleccionada), None)
+                
+                if recibo_seleccionado:
+                    info_cobranza = recibo_seleccionado['datos']
+                    st.session_state.cobranza_seleccionada = recibo_seleccionado['id_cobranza']
+                    st.session_state.info_cobranza_actual = info_cobranza
+                    
+                    # Mostrar información del recibo seleccionado
+                    st.write(f"**Recibo seleccionado:** {info_cobranza.get('Recibo', '')}")
+                    st.write(f"**Cliente:** {info_cobranza.get('Nombre/Razón Social', '')}")
+                    
+                    # Mostrar Prima de Recibo directamente
+                    prima_recibo = info_cobranza.get('Prima de Recibo', 0)
+                    moneda = info_cobranza.get('Moneda', 'MXN')
+                    prima_recibo_formateado = formatear_monto(prima_recibo)
+                    st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
+                    
+                    # Mostrar Clave de Emisión
+                    st.write(f"**Clave de Emisión:** {info_cobranza.get('Clave de Emisión', 'No disponible')}")
+                    
+                    st.write(f"**Próximo pago:** {info_cobranza.get('Próximo pago', '')}")
+                    st.write(f"**Periodicidad:** {info_cobranza.get('Periodicidad', '')}")
+                    
+                    # Mostrar días transcurridos
+                    dias_transcurridos = calcular_dias_transcurridos(info_cobranza.get('Próximo pago', ''))
+                    if dias_transcurridos is not None:
+                        st.write(f"**Días transcurridos desde vencimiento:** {dias_transcurridos}")
+                        
+                        # Mostrar alerta según días transcurridos
+                        if dias_transcurridos >= 20:
+                            st.error("⚠️ **ALERTA:** Recibo con más de 20 días de vencido - Contacto urgente requerido")
+                        elif dias_transcurridos >= 11:
+                            st.warning("⚠️ **ATENCIÓN:** Recibo con 11-20 días de vencido - Seguimiento necesario")
+                        elif dias_transcurridos >= 5:
+                            st.info("ℹ️ **AVISO:** Recibo con 5-10 días de vencido - Recordatorio de pago")
 
     # Formulario para el pago
     with st.form("form_pago"):
-        if polizas_pendientes and info_poliza is not None:
+        if st.session_state.info_cobranza_actual is not None:
+            info_cobranza = st.session_state.info_cobranza_actual
+            
             # Solo el campo Monto Pagado con valor 0 por defecto
             monto_pagado = st.number_input(
                 "Monto Pagado", 
@@ -1718,8 +1706,8 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             )
             
             # Mostrar la moneda del pago
-            moneda_poliza = info_poliza.get('Moneda', 'MXN')
-            st.write(f"**Moneda del pago:** {moneda_poliza}")
+            moneda_cobranza = info_cobranza.get('Moneda', 'MXN')
+            st.write(f"**Moneda del pago:** {moneda_cobranza}")
             
             fecha_pago = st.text_input(
                 "Fecha de Pago (dd/mm/yyyy)", 
@@ -1738,7 +1726,12 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                     if not valido:
                         st.error(f"Fecha de pago: {error}")
                     else:
-                        mask = (df_cobranza_completa['No. Póliza'] == poliza_seleccionada) & (df_cobranza_completa['Estatus'] == 'Pendiente')
+                        # Buscar el registro específico por ID único
+                        mask = (
+                            (df_cobranza_completa['No. Póliza'] == info_cobranza['No. Póliza']) & 
+                            (df_cobranza_completa['Recibo'] == info_cobranza['Recibo'])
+                        )
+                        
                         if mask.any():
                             # Actualizar solo el monto pagado, fecha y estatus
                             df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
@@ -1747,7 +1740,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                             
                             # Actualizar días de atraso si existe la columna
                             if 'Días Atraso' in df_cobranza_completa.columns:
-                                proximo_pago = info_poliza.get('Próximo pago', '')
+                                proximo_pago = info_cobranza.get('Próximo pago', '')
                                 if proximo_pago:
                                     try:
                                         proximo_pago_dt = datetime.strptime(proximo_pago, "%d/%m/%Y")
@@ -1759,17 +1752,18 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                         else:
                             # Si no existe (caso raro), agregamos un registro como pagado
                             nuevo = {
-                                "No. Póliza": poliza_seleccionada,
-                                "Nombre/Razón Social": info_poliza.get('Nombre/Razón Social', ''),
-                                "Mes Cobranza": info_poliza.get('Mes Cobranza', ''),
-                                "Próximo pago": info_poliza.get('Próximo pago', ''),
-                                "Prima de Recibo": info_poliza.get('Prima de Recibo', 0),  # CORREGIDO: Prima de Recibo en lugar de Monto Esperado
+                                "No. Póliza": info_cobranza['No. Póliza'],
+                                "Nombre/Razón Social": info_cobranza.get('Nombre/Razón Social', ''),
+                                "Mes Cobranza": info_cobranza.get('Mes Cobranza', ''),
+                                "Próximo pago": info_cobranza.get('Próximo pago', ''),
+                                "Prima de Recibo": info_cobranza.get('Prima de Recibo', 0),
                                 "Monto Pagado": monto_pagado,
                                 "Fecha Pago": fecha_pago,
                                 "Estatus": "Pagado",
-                                "Periodicidad": info_poliza.get('Periodicidad', ''),
-                                "Moneda": info_poliza.get('Moneda', 'MXN'),
-                                "Recibo": info_poliza.get('Recibo', '')
+                                "Periodicidad": info_cobranza.get('Periodicidad', ''),
+                                "Moneda": info_cobranza.get('Moneda', 'MXN'),
+                                "Recibo": info_cobranza.get('Recibo', ''),
+                                "ID_Cobranza": f"{info_cobranza['No. Póliza']}_R{info_cobranza.get('Recibo', '')}"
                             }
                             df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
 
@@ -1779,7 +1773,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                         else:
                             st.error("❌ Error al registrar el pago")
         else:
-            st.info("Seleccione una póliza para registrar el pago")
+            st.info("Seleccione un recibo de cobranza para registrar el pago")
 
     # HISTORIAL DE PAGOS CON FILTROS MEJORADOS
     if df_cobranza is not None and not df_cobranza.empty:
@@ -1841,7 +1835,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             if mes_seleccionado != "Todos":
                 df_filtrado = df_filtrado[df_filtrado['Mes'] == mes_seleccionado]
             
-            # Formatear montos para el historial - CORREGIDO: Solo Prima de Recibo y Monto Pagado
+            # Formatear montos para el historial
             df_filtrado['Prima de Recibo Formateado'] = df_filtrado['Prima de Recibo'].apply(formatear_monto)
             df_filtrado['Monto Pagado Formateado'] = df_filtrado['Monto Pagado'].apply(formatear_monto)
             
@@ -1930,6 +1924,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
