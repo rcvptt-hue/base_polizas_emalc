@@ -430,7 +430,7 @@ def cambiar_pestaña(nombre_pestaña):
 
 # ---- NUEVA FUNCIÓN PARA PESTAÑA OPERACIÓN ----
 def mostrar_operacion(df_operacion):
-    st.header("💰 Operación - Gastos Operacionales RIZKORA")
+    st.header("💰 Operación - Gastos Operacionales Rizkora")
 
     # Inicializar estado para la edición
     if 'modo_edicion_operacion' not in st.session_state:
@@ -2315,3 +2315,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
