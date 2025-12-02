@@ -6,6 +6,7 @@ Updated full version with:
  - Nueva funcionalidad de Consulta de Clientes
  - Cambio de Próximos Vencimientos a Renovaciones
  - Todas las secciones originales mejoradas
+ - Nueva pestaña de Operación para gastos operacionales
 """
 
 import streamlit as st
@@ -36,6 +37,9 @@ OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
 OPCIONES_MONEDA = ["MXN", "UDIS", "DLLS"]
 OPCIONES_ESTATUS_SEGUIMIENTO = ["Seguimiento", "Descartado", "Convertido"]
 OPCIONES_ESTADO_POLIZA = ["VIGENTE", "CANCELADO", "TERMINADO"]
+OPCIONES_CONCEPTO_OPERACION = ["Papelería", "Contabilidad", "Patrocinio", "Tarjetas", "Promocionales", "Impuestos", "Gasolina"]
+OPCIONES_FORMA_PAGO_OPERACION = ["Efectivo", "TDC", "TDD", "Transferencia"]
+OPCIONES_DEDUCIBLE = ["Sí", "No"]
 
 # Inicializar estado de sesión
 if 'active_tab' not in st.session_state:
@@ -86,7 +90,7 @@ def cargar_datos():
     try:
         spreadsheet = conectar_google_sheets()
         if not spreadsheet:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
         # Cargar hojas existentes
         try:
@@ -119,27 +123,36 @@ def cargar_datos():
             df_cobranza = pd.DataFrame(worksheet_cobranza.get_all_records())
         except Exception as e:
             df_cobranza = pd.DataFrame(columns=[
-                "No. Póliza", "Mes Cobranza", "Prima de Recibo", "Monto Pagado",  # Cambiado Monto Esperado por Prima de Recibo
+                "No. Póliza", "Mes Cobranza", "Prima de Recibo", "Monto Pagado",
                 "Fecha Pago", "Estatus", "Días Atraso", "Fecha Vencimiento", "Nombre/Razón Social", "Días Restantes",
                 "Periodicidad", "Moneda", "Recibo", "Clave de Emisión"
             ])
  
         try:
-             worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
-             df_seguimiento = pd.DataFrame(worksheet_seguimiento.get_all_records())
+            worksheet_seguimiento = spreadsheet.worksheet("Seguimiento")
+            df_seguimiento = pd.DataFrame(worksheet_seguimiento.get_all_records())
         except Exception as e:
-             df_seguimiento = pd.DataFrame(columns=[
-                 "Nombre/Razón Social", "Fecha Contacto", "Estatus", "Comentarios", "Fecha Registro"
-             ])
+            df_seguimiento = pd.DataFrame(columns=[
+                "Nombre/Razón Social", "Fecha Contacto", "Estatus", "Comentarios", "Fecha Registro"
+            ])
+
+        try:
+            worksheet_operacion = spreadsheet.worksheet("Operacion")
+            df_operacion = pd.DataFrame(worksheet_operacion.get_all_records())
+        except Exception as e:
+            df_operacion = pd.DataFrame(columns=[
+                "Fecha", "Concepto", "Proveedor", "Monto", "Forma de Pago", 
+                "Banco", "Responsable del pago", "Finalidad", "Deducible"
+            ])
  
-        return df_prospectos, df_polizas, df_cobranza, df_seguimiento
+        return df_prospectos, df_polizas, df_cobranza, df_seguimiento, df_operacion
 
     except Exception as e:
         st.error(f"Error cargando datos: {e}")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # Función para guardar datos (invalida el cache)
-def guardar_datos(df_prospectos=None, df_polizas=None, df_cobranza=None, df_seguimiento=None):
+def guardar_datos(df_prospectos=None, df_polizas=None, df_cobranza=None, df_seguimiento=None, df_operacion=None):
     """Guardar datos en Google Sheets e invalidar cache"""
     try:
         spreadsheet = conectar_google_sheets()
@@ -206,6 +219,24 @@ def guardar_datos(df_prospectos=None, df_polizas=None, df_cobranza=None, df_segu
                 except Exception as e:
                     st.error(f"❌ Error al crear/actualizar hoja 'Seguimiento': {e}")
 
+        # Actualizar hoja de Operación si se proporciona
+        if df_operacion is not None:
+            try:
+                worksheet_operacion = spreadsheet.worksheet("Operacion")
+                worksheet_operacion.clear()
+                if not df_operacion.empty:
+                    data = [df_operacion.columns.values.tolist()] + df_operacion.fillna('').values.tolist()
+                    worksheet_operacion.update(data, value_input_option='USER_ENTERED')
+            except:
+                # Crear hoja si no existe
+                try:
+                    worksheet_operacion = spreadsheet.add_worksheet(title="Operacion", rows=1000, cols=20)
+                    if not df_operacion.empty:
+                        data = [df_operacion.columns.values.tolist()] + df_operacion.fillna('').values.tolist()
+                        worksheet_operacion.update(data, value_input_option='USER_ENTERED')
+                except Exception as e:
+                    st.error(f"❌ Error al crear/actualizar hoja 'Operacion': {e}")
+
         # Invalidar cache para forzar recarga
         st.cache_data.clear()
         return True
@@ -250,7 +281,7 @@ def calcular_cobranza():
     - Evita duplicados verificando por No. Póliza y número de recibo
     """
     try:
-        _, df_polizas, df_cobranza, _ = cargar_datos()
+        _, df_polizas, df_cobranza, _, _ = cargar_datos()
 
         if df_polizas.empty:
             return pd.DataFrame()
@@ -396,6 +427,362 @@ def calcular_cobranza():
 # Función para manejar el cambio de pestaña
 def cambiar_pestaña(nombre_pestaña):
     st.session_state.active_tab = nombre_pestaña
+
+# ---- NUEVA FUNCIÓN PARA PESTAÑA OPERACIÓN ----
+def mostrar_operacion(df_operacion):
+    st.header("💰 Operación - Gastos Operacionales RIZKORA")
+
+    # Inicializar estado para la edición
+    if 'modo_edicion_operacion' not in st.session_state:
+        st.session_state.modo_edicion_operacion = False
+    if 'operacion_editando' not in st.session_state:
+        st.session_state.operacion_editando = None
+    if 'operacion_data' not in st.session_state:
+        st.session_state.operacion_data = {}
+
+    # Mostrar estadísticas generales
+    if not df_operacion.empty:
+        col_stats1, col_stats2, col_stats3 = st.columns(3)
+        
+        with col_stats1:
+            try:
+                total_gastos = df_operacion['Monto'].sum()
+                st.metric("Total Gastos", f"${total_gastos:,.2f}")
+            except:
+                st.metric("Total Gastos", "N/A")
+        
+        with col_stats2:
+            try:
+                # Calcular gastos del mes actual
+                df_operacion['Fecha DT'] = pd.to_datetime(df_operacion['Fecha'], dayfirst=True, errors='coerce')
+                mes_actual = datetime.now().month
+                gastos_mes = df_operacion[df_operacion['Fecha DT'].dt.month == mes_actual]['Monto'].sum()
+                st.metric("Gastos del Mes", f"${gastos_mes:,.2f}")
+            except:
+                st.metric("Gastos del Mes", "N/A")
+        
+        with col_stats3:
+            try:
+                # Calcular gastos deducibles
+                gastos_deducibles = df_operacion[df_operacion['Deducible'] == 'Sí']['Monto'].sum()
+                st.metric("Gastos Deducibles", f"${gastos_deducibles:,.2f}")
+            except:
+                st.metric("Gastos Deducibles", "N/A")
+
+    # Selector para editar gasto existente
+    if not df_operacion.empty:
+        # Crear lista de gastos para seleccionar
+        gastos_lista = []
+        for idx, row in df_operacion.iterrows():
+            fecha = row.get('Fecha', '')
+            concepto = row.get('Concepto', '')
+            proveedor = row.get('Proveedor', '')
+            monto = row.get('Monto', 0)
+            gastos_lista.append(f"{fecha} - {concepto} - {proveedor} - ${monto}")
+        
+        gasto_seleccionado = st.selectbox(
+            "Seleccionar Gasto para editar",
+            [""] + gastos_lista,
+            key="select_editar_operacion"
+        )
+
+        # Botones para cargar datos o limpiar selección
+        if gasto_seleccionado:
+            col_btn1, col_btn2 = st.columns([1, 1])
+            with col_btn1:
+                if st.button("📝 Cargar Datos para Editar", use_container_width=True, key="btn_cargar_datos_operacion"):
+                    # Encontrar el índice del gasto seleccionado
+                    idx_seleccionado = gastos_lista.index(gasto_seleccionado)
+                    # Obtener los datos del gasto seleccionado
+                    if idx_seleccionado < len(df_operacion):
+                        fila = df_operacion.iloc[idx_seleccionado]
+                        st.session_state.operacion_data = fila.to_dict()
+                        st.session_state.operacion_editando = idx_seleccionado
+                        st.session_state.modo_edicion_operacion = True
+                        st.rerun()
+
+            with col_btn2:
+                if st.button("❌ Limpiar selección", use_container_width=True, key="btn_limpiar_seleccion_operacion"):
+                    st.session_state.operacion_editando = None
+                    st.session_state.modo_edicion_operacion = False
+                    st.session_state.operacion_data = {}
+                    st.rerun()
+
+            # Mostrar información del gasto seleccionado
+            if st.session_state.operacion_editando == idx_seleccionado:
+                st.info(f"**Editando:** {gasto_seleccionado}")
+
+    # Botón para cancelar edición
+    if st.session_state.modo_edicion_operacion:
+        if st.button("❌ Cancelar Edición", key="btn_cancelar_edicion_operacion"):
+            st.session_state.operacion_editando = None
+            st.session_state.modo_edicion_operacion = False
+            st.session_state.operacion_data = {}
+            st.rerun()
+
+    # --- FORMULARIO DE GASTOS OPERACIONALES ---
+    with st.form("form_operacion", clear_on_submit=True):
+        st.subheader("📝 Formulario de Gasto Operacional")
+        
+        # Mostrar información de edición
+        if st.session_state.modo_edicion_operacion and st.session_state.operacion_editando is not None:
+            st.info(f"Editando gasto #{st.session_state.operacion_editando + 1}")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            # Fecha
+            fecha_val = st.session_state.operacion_data.get("Fecha", fecha_actual())
+            fecha = st.text_input(
+                "Fecha (dd/mm/yyyy)*", 
+                value=fecha_val,
+                placeholder="dd/mm/yyyy"
+            )
+
+            # Concepto
+            concepto_val = st.session_state.operacion_data.get("Concepto", "")
+            concepto_index = OPCIONES_CONCEPTO_OPERACION.index(concepto_val) if concepto_val in OPCIONES_CONCEPTO_OPERACION else 0
+            concepto = st.selectbox(
+                "Concepto*", 
+                OPCIONES_CONCEPTO_OPERACION, 
+                index=concepto_index
+            )
+
+            # Proveedor
+            proveedor = st.text_input(
+                "Proveedor*", 
+                value=st.session_state.operacion_data.get("Proveedor", ""),
+                placeholder="Nombre del proveedor"
+            )
+
+            # Monto
+            monto_val = st.session_state.operacion_data.get("Monto", 0)
+            monto = st.number_input(
+                "Monto ($)*", 
+                min_value=0.0,
+                value=float(monto_val) if monto_val else 0.0,
+                step=0.01,
+                format="%.2f"
+            )
+
+        with col2:
+            # Forma de Pago
+            forma_pago_val = st.session_state.operacion_data.get("Forma de Pago", "")
+            forma_pago_index = OPCIONES_FORMA_PAGO_OPERACION.index(forma_pago_val) if forma_pago_val in OPCIONES_FORMA_PAGO_OPERACION else 0
+            forma_pago = st.selectbox(
+                "Forma de Pago*", 
+                OPCIONES_FORMA_PAGO_OPERACION, 
+                index=forma_pago_index
+            )
+
+            # Banco
+            banco_val = st.session_state.operacion_data.get("Banco", "NINGUNO")
+            banco_index = OPCIONES_BANCO.index(banco_val) if banco_val in OPCIONES_BANCO else 0
+            banco = st.selectbox(
+                "Banco", 
+                OPCIONES_BANCO, 
+                index=banco_index
+            )
+
+            # Responsable del pago
+            responsable = st.text_input(
+                "Responsable del pago*", 
+                value=st.session_state.operacion_data.get("Responsable del pago", ""),
+                placeholder="Persona que realizó el pago"
+            )
+
+            # Finalidad
+            finalidad = st.text_area(
+                "Finalidad*", 
+                value=st.session_state.operacion_data.get("Finalidad", ""),
+                placeholder="Descripción detallada del gasto"
+            )
+
+            # Deducible
+            deducible_val = st.session_state.operacion_data.get("Deducible", "No")
+            deducible_index = OPCIONES_DEDUCIBLE.index(deducible_val) if deducible_val in OPCIONES_DEDUCIBLE else 1
+            deducible = st.selectbox(
+                "Deducible", 
+                OPCIONES_DEDUCIBLE, 
+                index=deducible_index
+            )
+
+        # Validar fecha
+        fecha_error = None
+        if fecha:
+            valido, error = validar_fecha(fecha)
+            if not valido:
+                fecha_error = error
+
+        # Mostrar error de fecha si existe
+        if fecha_error:
+            st.error(f"Fecha: {fecha_error}")
+
+        # --- BOTONES DEL FORMULARIO ---
+        col_b1, col_b2 = st.columns(2)
+        
+        with col_b1:
+            # Botón de envío principal
+            if st.session_state.modo_edicion_operacion:
+                submit_button = st.form_submit_button("💾 Actualizar Gasto", use_container_width=True)
+            else:
+                submit_button = st.form_submit_button("💾 Agregar Nuevo Gasto", use_container_width=True)
+        
+        with col_b2:
+            # Botón de cancelar secundario
+            cancel_button = st.form_submit_button("🚫 Cancelar", use_container_width=True, type="secondary")
+
+        # --- PROCESAR BOTÓN CANCELAR ---
+        if cancel_button:
+            st.session_state.operacion_editando = None
+            st.session_state.modo_edicion_operacion = False
+            st.session_state.operacion_data = {}
+            st.rerun()
+
+        # --- PROCESAR BOTÓN DE ENVÍO ---
+        if submit_button:
+            # Validaciones
+            errores = []
+            
+            if not fecha:
+                errores.append("La fecha es obligatoria")
+            elif fecha_error:
+                errores.append(f"Fecha: {fecha_error}")
+            
+            if not proveedor.strip():
+                errores.append("El proveedor es obligatorio")
+            
+            if monto <= 0:
+                errores.append("El monto debe ser mayor a 0")
+            
+            if not responsable.strip():
+                errores.append("El responsable del pago es obligatorio")
+            
+            if not finalidad.strip():
+                errores.append("La finalidad es obligatoria")
+            
+            if errores:
+                for error in errores:
+                    st.warning(error)
+            else:
+                # Crear objeto con los datos del gasto
+                nuevo_gasto = {
+                    "Fecha": fecha,
+                    "Concepto": concepto,
+                    "Proveedor": proveedor.strip(),
+                    "Monto": float(monto),
+                    "Forma de Pago": forma_pago,
+                    "Banco": banco,
+                    "Responsable del pago": responsable.strip(),
+                    "Finalidad": finalidad.strip(),
+                    "Deducible": deducible
+                }
+
+                if st.session_state.modo_edicion_operacion and st.session_state.operacion_editando is not None:
+                    # ACTUALIZAR gasto existente
+                    idx = st.session_state.operacion_editando
+                    if idx < len(df_operacion):
+                        for key, value in nuevo_gasto.items():
+                            df_operacion.loc[idx, key] = value
+                        mensaje = "✅ Gasto actualizado correctamente"
+                    else:
+                        st.error("❌ No se encontró el gasto a actualizar")
+                        return
+                else:
+                    # AGREGAR nuevo gasto
+                    df_operacion = pd.concat([df_operacion, pd.DataFrame([nuevo_gasto])], ignore_index=True)
+                    mensaje = "✅ Gasto agregado correctamente"
+
+                # Guardar cambios
+                if guardar_datos(df_operacion=df_operacion):
+                    st.success(mensaje)
+                    
+                    # Limpiar estado después de guardar
+                    st.session_state.operacion_editando = None
+                    st.session_state.modo_edicion_operacion = False
+                    st.session_state.operacion_data = {}
+                    
+                    st.rerun()
+                else:
+                    st.error("❌ Error al guardar el gasto")
+
+    # --- MOSTRAR LISTA DE GASTOS OPERACIONALES ---
+    st.subheader("📋 Historial de Gastos Operacionales")
+    
+    if not df_operacion.empty:
+        # Crear una copia para no modificar el original
+        df_mostrar = df_operacion.copy()
+        
+        # Ordenar por fecha más reciente primero
+        try:
+            df_mostrar['Fecha DT'] = pd.to_datetime(df_mostrar['Fecha'], dayfirst=True, errors='coerce')
+            df_mostrar = df_mostrar.sort_values('Fecha DT', ascending=False)
+        except:
+            pass
+        
+        # Formatear montos para mejor visualización
+        def formatear_monto(monto):
+            try:
+                return f"${float(monto):,.2f}"
+            except:
+                return str(monto)
+        
+        df_mostrar['Monto Formateado'] = df_mostrar['Monto'].apply(formatear_monto)
+        
+        # Columnas a mostrar
+        columnas_mostrar = ['Fecha', 'Concepto', 'Proveedor', 'Monto Formateado', 'Forma de Pago', 'Deducible', 'Responsable del pago']
+        columnas_disponibles = [col for col in columnas_mostrar if col in df_mostrar.columns]
+        
+        # Aplicar estilo para resaltar gastos deducibles
+        def style_deducible(val):
+            if val == 'Sí':
+                return 'background-color: #d4edda; color: #155724; font-weight: bold;'  # Verde
+            else:
+                return 'background-color: #f8d7da; color: #721c24;'  # Rojo
+        
+        try:
+            styled_df = df_mostrar[columnas_disponibles].style.applymap(
+                style_deducible, 
+                subset=['Deducible']
+            )
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        except:
+            st.dataframe(df_mostrar[columnas_disponibles], use_container_width=True, hide_index=True)
+
+        # --- ESTADÍSTICAS DETALLADAS ---
+        st.subheader("📊 Estadísticas Detalladas")
+        
+        try:
+            # Estadísticas por concepto
+            col_stats1, col_stats2 = st.columns(2)
+            
+            with col_stats1:
+                st.write("**Gastos por Concepto:**")
+                gastos_por_concepto = df_operacion.groupby('Concepto')['Monto'].sum().sort_values(ascending=False)
+                for concepto, total in gastos_por_concepto.items():
+                    st.write(f"- {concepto}: ${total:,.2f}")
+            
+            with col_stats2:
+                st.write("**Gastos por Forma de Pago:**")
+                gastos_por_pago = df_operacion.groupby('Forma de Pago')['Monto'].sum().sort_values(ascending=False)
+                for forma_pago, total in gastos_por_pago.items():
+                    st.write(f"- {forma_pago}: ${total:,.2f}")
+            
+            # Estadísticas por mes
+            st.write("**Gastos por Mes (Últimos 6 meses):**")
+            try:
+                df_operacion['Mes'] = df_operacion['Fecha DT'].dt.strftime('%Y-%m')
+                ultimos_6_meses = df_operacion.groupby('Mes')['Monto'].sum().sort_index(ascending=False).head(6)
+                for mes, total in ultimos_6_meses.items():
+                    st.write(f"- {mes}: ${total:,.2f}")
+            except:
+                st.write("No se pudieron calcular los gastos por mes")
+                
+        except Exception as e:
+            st.write(f"No se pudieron generar estadísticas detalladas: {e}")
+
+    else:
+        st.info("No hay gastos operacionales registrados")
 
 # ---- Funciones para cada pestaña (completas) ----
 
@@ -1877,7 +2264,7 @@ def main():
             st.rerun()
 
     # Cargar datos iniciales
-    df_prospectos, df_polizas, df_cobranza, df_seguimiento = cargar_datos()
+    df_prospectos, df_polizas, df_cobranza, df_seguimiento, df_operacion = cargar_datos()
 
     # Crear pestañas en el orden solicitado
     tab_names = [
@@ -1887,7 +2274,8 @@ def main():
         "🔍 Consulta de Clientes",
         "🆕 Póliza Nueva",
         "🔄 Renovaciones",
-        "💰 Cobranza"
+        "💰 Cobranza",
+        "💰 Operación"  # NUEVA PESTAÑA AÑADIDA
     ]
 
     # Usar radio buttons para una selección más confiable
@@ -1922,18 +2310,8 @@ def main():
         mostrar_renovaciones(df_polizas)
     elif st.session_state.active_tab == "💰 Cobranza":
         mostrar_cobranza(df_polizas, df_cobranza)
+    elif st.session_state.active_tab == "💰 Operación":
+        mostrar_operacion(df_operacion)
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
