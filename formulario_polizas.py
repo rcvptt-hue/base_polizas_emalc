@@ -899,6 +899,14 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 "Correo", 
                 value=st.session_state.prospecto_data.get("Correo", "")
             )
+            # Comentarios
+            comentarios_prospecto = st.text_area(
+                "Comentarios", 
+                value=st.session_state.prospecto_data.get("Comentarios", ""),
+                placeholder="Comentarios del prospecto...",
+                height=100,
+                key="comentarios_prospecto"
+            )
 
         with col2:
             # Producto
@@ -945,14 +953,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 placeholder="Origen del cliente/promoción"
             )
 
-            # Comentarios
-            comentarios_prospecto = st.text_area(
-                "Comentarios", 
-                value=st.session_state.prospecto_data.get("Comentarios", ""),
-                placeholder="Comentarios del prospecto...",
-                height=100,
-                key="comentarios_prospecto"
-            )
+            
             # Dirección
             direccion = st.text_input(
                 "Dirección", 
@@ -2385,4 +2386,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
