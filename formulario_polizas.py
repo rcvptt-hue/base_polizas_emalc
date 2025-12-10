@@ -792,7 +792,7 @@ def mostrar_operacion(df_operacion):
 
 # ---- Funciones para cada pestaña (completas) ----
 
-# 1. Prospectos
+# 1. Prospectos - CORREGIDO: ahora usa "Notas" para comentarios
 def mostrar_prospectos(df_prospectos, df_polizas):
     st.header("👥 Gestión de Prospectos")
 
@@ -822,11 +822,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     fila = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado]
                     if not fila.empty:
                         fila = fila.iloc[0].fillna("")
-                        ####st.session_state.prospecto_data = fila.to_dict()
-                        # Convertir a diccionario y reemplazar NaN con string vacío
-                        #fila = fila.fillna("")
                         st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
-                                                
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
                         # 🔥 Importante: Resetear campo de comentarios del formulario
@@ -906,13 +902,14 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 "Correo", 
                 value=st.session_state.prospecto_data.get("Correo", "")
             )
-            # Comentarios
-            comentarios_prospecto = st.text_area(
-                "Comentarios", 
+
+            # Notas (antes "Comentarios") - CORREGIDO
+            notas = st.text_area(
+                "Notas", 
                 value=st.session_state.prospecto_data.get("Notas", ""),
-                placeholder="Comentarios del prospecto...",
+                placeholder="Notas del prospecto...",
                 height=100,
-                key="comentarios_prospecto"
+                key="notas_prospecto"
             )
 
         with col2:
@@ -960,7 +957,14 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 placeholder="Origen del cliente/promoción"
             )
 
-            
+            # Estatus
+            estatus_val = st.session_state.prospecto_data.get("Estatus", "")
+            estatus = st.text_input(
+                "Estatus", 
+                value=estatus_val,
+                placeholder="Estado actual del prospecto"
+            )
+
             # Dirección
             direccion = st.text_input(
                 "Dirección", 
@@ -1026,7 +1030,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             elif fecha_errors:
                 st.warning("Corrija los errores en las fechas antes de guardar")
             else:
-                # Crear objeto con los datos del prospecto
+                # Crear objeto con los datos del prospecto - CORREGIDO: usar "Notas" en lugar de "Comentarios"
                 nuevo_prospecto = {
                     "Tipo Persona": tipo_persona,
                     "Nombre/Razón Social": nombre_razon.strip(),
@@ -1040,8 +1044,9 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     "Fecha Contacto": fecha_contacto,
                     "Seguimiento": seguimiento,
                     "Representantes Legales": representantes,
-                    "Comentarios": comentarios_prospecto,
-                    "Referenciador": referenciador
+                    "Notas": notas,  # CORREGIDO: Campo "Notas" en lugar de "Comentarios"
+                    "Referenciador": referenciador,
+                    "Estatus": estatus
                 }
 
                 if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_editando:
@@ -1078,7 +1083,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         # Mostrar columnas más relevantes
         columnas_mostrar = [
             "Nombre/Razón Social", "Producto", "Teléfono", "Correo",
-            "Fecha Registro", "Referenciador", "Notas"
+            "Fecha Registro", "Referenciador", "Notas", "Estatus"
         ]
         columnas_disponibles = [col for col in columnas_mostrar if col in df_prospectos.columns]
 
@@ -2393,12 +2398,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
