@@ -795,7 +795,7 @@ def mostrar_operacion(df_operacion):
 
 # ---- Funciones para cada pestaña (completas) ----
 
-# 1. Prospectos - CORREGIDO: ahora usa "Notas" para comentarios
+# 1. Prospectos - VERSIÓN CORREGIDA
 def mostrar_prospectos(df_prospectos, df_polizas):
     st.header("👥 Gestión de Prospectos")
 
@@ -806,6 +806,8 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         st.session_state.prospecto_editando = None
     if 'prospecto_data' not in st.session_state:
         st.session_state.prospecto_data = {}
+    if 'notas_temp' not in st.session_state:
+        st.session_state.notas_temp = ""
 
     # --- Selector para editar prospecto existente ---
     if not df_prospectos.empty:
@@ -828,8 +830,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                         st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
-                        # 🔥 ACTUALIZAR estado de notas
-                        st.session_state.notas_prospecto_actual = str(fila.get("Notas", "")).strip()
+                        st.session_state.notas_temp = str(fila.get("Notas", "")).strip()
                         st.rerun()
 
             with col_btn2:
@@ -838,7 +839,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
-                    st.session_state.notas_prospecto_actual = ""
+                    st.session_state.notas_temp = ""
                     st.rerun()
 
             # Mostrar información del prospecto seleccionado
@@ -853,7 +854,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
-            st.session_state.notas_prospecto_actual = ""
+            st.session_state.notas_temp = ""
             st.rerun()
 
     # --- FORMULARIO PRINCIPAL ---
@@ -907,21 +908,14 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 value=st.session_state.prospecto_data.get("Correo", "")
             )
 
-            # Notas (antes "Comentarios") - CORREGIDO - usando estado específico
-            notas_valor = st.session_state.notas_prospecto_actual if st.session_state.modo_edicion_prospectos else ""
-            if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_data:
-                # Si estamos en modo edición y hay datos, usar el valor del estado específico
-                notas_valor = st.session_state.notas_prospecto_actual
-            else:
-                # Si no estamos en modo edición, usar valor vacío
-                notas_valor = ""
-                
+            # Notas - usando estado temporal
+            notas_valor = st.session_state.notas_temp if st.session_state.modo_edicion_prospectos else st.session_state.prospecto_data.get("Notas", "")
             notas = st.text_area(
                 "Notas", 
                 value=notas_valor,
                 placeholder="Notas del prospecto...",
                 height=100,
-                key="notas_prospecto_input"
+                key="notas_prospecto"
             )
 
         with col2:
@@ -1033,7 +1027,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
-            st.session_state.notas_prospecto_actual = ""
+            st.session_state.notas_temp = ""  # LIMPIAR EL ESTADO TEMPORAL
             st.rerun()
 
         # --- PROCESAR BOTÓN DE ENVÍO ---
@@ -1043,7 +1037,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             elif fecha_errors:
                 st.warning("Corrija los errores en las fechas antes de guardar")
             else:
-                # Crear objeto con los datos del prospecto - CORREGIDO: usar "Notas" en lugar de "Comentarios"
+                # Crear objeto con los datos del prospecto
                 nuevo_prospecto = {
                     "Tipo Persona": tipo_persona,
                     "Nombre/Razón Social": nombre_razon.strip(),
@@ -1057,7 +1051,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     "Fecha Contacto": fecha_contacto,
                     "Seguimiento": seguimiento,
                     "Representantes Legales": representantes,
-                    "Notas": notas,  # CORREGIDO: Campo "Notas" en lugar de "Comentarios"
+                    "Notas": notas,  # Usar el valor actual del textarea
                     "Referenciador": referenciador,
                     "Estatus": estatus
                 }
@@ -1085,7 +1079,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
-                    st.session_state.notas_prospecto_actual = ""
+                    st.session_state.notas_temp = ""  # LIMPIAR EL ESTADO TEMPORAL
                     
                     st.rerun()
                 else:
@@ -1127,7 +1121,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.metric("Prospectos este Mes", "N/A")
     else:
         st.info("No hay prospectos registrados")
-
 # 2. Seguimiento
 def mostrar_seguimiento(df_prospectos, df_seguimiento):
     st.header("📞 Seguimiento de Prospectos")
@@ -2412,3 +2405,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
