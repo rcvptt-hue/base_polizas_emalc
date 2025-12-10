@@ -821,10 +821,15 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     # Buscar y cargar datos del prospecto
                     fila = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado]
                     if not fila.empty:
-                        fila = fila.iloc[0]
-                        st.session_state.prospecto_data = fila.to_dict()
+                        fila = fila.iloc[0].fillna("")
+                        ####st.session_state.prospecto_data = fila.to_dict()
                         # Convertir a diccionario y reemplazar NaN con string vacío
-                        st.session_state.prospecto_data = fila.fillna('').to_dict()
+                        #fila = fila.fillna("")
+                        st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
+                        # 🔥 Importante: Resetear campo de comentarios del formulario
+                        if "comentarios_prospecto" in st.session_state:
+                            del st.session_state["comentarios_prospecto"]
+                         
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
                         st.rerun()
@@ -2388,6 +2393,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
