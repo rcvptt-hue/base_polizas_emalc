@@ -103,7 +103,7 @@ def cargar_datos():
             df_prospectos = pd.DataFrame(columns=[
                 "Tipo Persona", "Nombre/Razón Social", "Fecha Nacimiento", "RFC", "Teléfono",
                 "Correo", "Producto", "Fecha Registro", "Fecha Contacto", "Seguimiento",
-                "Representantes Legales", "Referenciador", "Estatus", "Comentarios", "Dirección"
+                "Representantes Legales", "Referenciador", "Estatus", "Notas", "Dirección"
             ])
 
         try:
@@ -2393,6 +2393,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
