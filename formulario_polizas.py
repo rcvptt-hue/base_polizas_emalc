@@ -823,10 +823,8 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     if not fila.empty:
                         fila = fila.iloc[0]
                         st.session_state.prospecto_data = fila.to_dict()
-                        # Asegurar que el campo Comentarios exista en los datos
-                        # Si no existe en los datos cargados, inicializarlo como vacío
-                        if "Comentarios" not in st.session_state.prospecto_data:
-                            st.session_state.prospecto_data["Comentarios"] = ""
+                        # Convertir a diccionario y reemplazar NaN con string vacío
+                        st.session_state.prospecto_data = fila.fillna('').to_dict()
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
                         st.rerun()
@@ -2390,6 +2388,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
