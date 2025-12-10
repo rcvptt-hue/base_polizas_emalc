@@ -46,6 +46,9 @@ OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Vencido", "Pagado"]  # Nuevo estado p
 # Inicializar estado de sesión
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = "👥 Prospectos"
+# Añadir estado específico para notas
+if 'notas_prospecto_actual' not in st.session_state:
+    st.session_state.notas_prospecto_actual = ""
 
 # Configuración de Google Sheets
 @st.cache_resource(ttl=3600)
@@ -825,9 +828,8 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                         st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
-                        # 🔥 Importante: Resetear campo de comentarios del formulario
-                        if "comentarios_prospecto" in st.session_state:
-                            del st.session_state["comentarios_prospecto"]
+                        # 🔥 ACTUALIZAR estado de notas
+                        st.session_state.notas_prospecto_actual = str(fila.get("Notas", "")).strip()
                         st.rerun()
 
             with col_btn2:
@@ -836,6 +838,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
+                    st.session_state.notas_prospecto_actual = ""
                     st.rerun()
 
             # Mostrar información del prospecto seleccionado
@@ -850,6 +853,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
+            st.session_state.notas_prospecto_actual = ""
             st.rerun()
 
     # --- FORMULARIO PRINCIPAL ---
@@ -903,13 +907,21 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 value=st.session_state.prospecto_data.get("Correo", "")
             )
 
-            # Notas (antes "Comentarios") - CORREGIDO
+            # Notas (antes "Comentarios") - CORREGIDO - usando estado específico
+            notas_valor = st.session_state.notas_prospecto_actual if st.session_state.modo_edicion_prospectos else ""
+            if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_data:
+                # Si estamos en modo edición y hay datos, usar el valor del estado específico
+                notas_valor = st.session_state.notas_prospecto_actual
+            else:
+                # Si no estamos en modo edición, usar valor vacío
+                notas_valor = ""
+                
             notas = st.text_area(
                 "Notas", 
-                value=st.session_state.prospecto_data.get("Notas", ""),
+                value=notas_valor,
                 placeholder="Notas del prospecto...",
                 height=100,
-                key="notas_prospecto"
+                key="notas_prospecto_input"
             )
 
         with col2:
@@ -1021,6 +1033,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
+            st.session_state.notas_prospecto_actual = ""
             st.rerun()
 
         # --- PROCESAR BOTÓN DE ENVÍO ---
@@ -1072,6 +1085,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
+                    st.session_state.notas_prospecto_actual = ""
                     
                     st.rerun()
                 else:
