@@ -909,7 +909,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             # Comentarios
             comentarios_prospecto = st.text_area(
                 "Comentarios", 
-                value=st.session_state.prospecto_data.get("Comentarios", ""),
+                value=st.session_state.prospecto_data.get("Notas", ""),
                 placeholder="Comentarios del prospecto...",
                 height=100,
                 key="comentarios_prospecto"
@@ -1078,7 +1078,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         # Mostrar columnas más relevantes
         columnas_mostrar = [
             "Nombre/Razón Social", "Producto", "Teléfono", "Correo",
-            "Fecha Registro", "Referenciador", "Comentarios"
+            "Fecha Registro", "Referenciador", "Notas"
         ]
         columnas_disponibles = [col for col in columnas_mostrar if col in df_prospectos.columns]
 
@@ -2393,6 +2393,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
