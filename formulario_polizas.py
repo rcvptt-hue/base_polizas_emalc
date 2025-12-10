@@ -826,12 +826,12 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                         # Convertir a diccionario y reemplazar NaN con string vacío
                         #fila = fila.fillna("")
                         st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
+                                                
+                        st.session_state.prospecto_editando = prospecto_seleccionado
+                        st.session_state.modo_edicion_prospectos = True
                         # 🔥 Importante: Resetear campo de comentarios del formulario
                         if "comentarios_prospecto" in st.session_state:
                             del st.session_state["comentarios_prospecto"]
-                         
-                        st.session_state.prospecto_editando = prospecto_seleccionado
-                        st.session_state.modo_edicion_prospectos = True
                         st.rerun()
 
             with col_btn2:
@@ -2393,6 +2393,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
