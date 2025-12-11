@@ -802,9 +802,8 @@ def mostrar_asesoria_axa():
     
     with tab5:
         st.subheader("📊 Reporte Financiero")
-        
         # Botones de acción en la parte superior
-        col_btn1, col_btn2 = st.columns(2)
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
         
         with col_btn1:
             # Botón para borrar todos los datos del formulario
@@ -877,30 +876,35 @@ def mostrar_asesoria_axa():
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
-                        
-                        # Botón para descargar PDF (REAL)
-                        if st.button("📄 Generar y Descargar PDF", use_container_width=True):
-                            with st.spinner("Generando PDF..."):
-                                pdf_buffer = generar_pdf_reporte(metricas)
-                                if pdf_buffer:
-                                    nombre_cliente = st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')
-                                    nombre_archivo = f"Reporte_Financiero_{nombre_cliente.replace(' ', '_')}.pdf"
-                                    
-                                    st.download_button(
-                                        label="📥 Descargar PDF",
-                                        data=pdf_buffer,
-                                        file_name=nombre_archivo,
-                                        mime="application/pdf",
-                                        use_container_width=True
-                                    )
-                                else:
-                                    st.error("❌ Error al generar el PDF")
                     else:
                         st.error("❌ Error al calcular las métricas financieras")
         
+        with col_btn3:
+            # Botón para generar PDF (solo si hay métricas)
+            if st.session_state.metricas_financieras:
+                if st.button("📄 Generar PDF", type="primary", use_container_width=True):
+                    with st.spinner("Generando PDF..."):
+                        pdf_buffer = generar_pdf_reporte(st.session_state.metricas_financieras)
+                        if pdf_buffer:
+                            nombre_cliente = st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')
+                            nombre_archivo = f"Reporte_Financiero_{nombre_cliente.replace(' ', '_')}.pdf"
+                            
+                            st.download_button(
+                                label="📥 Descargar PDF",
+                                data=pdf_buffer,
+                                file_name=nombre_archivo,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        else:
+                            st.error("❌ Error al generar el PDF")
+            else:
+                st.info("Genere el reporte primero")
+        
         # Mostrar datos actuales si ya existen
         if st.session_state.metricas_financieras:
-            st.info("Ya tienes un reporte generado. Haz clic en 'Generar Reporte Completo' para actualizarlo.")
+            st.success("✅ Reporte disponible. Puede generar el PDF o Excel.")
+        
 
 def calcular_metricas_financieras():
     """Calcula métricas financieras basadas en los datos ingresados"""
@@ -1334,6 +1338,8 @@ def generar_pdf_reporte(metricas):
         
         # Estilos
         styles = getSampleStyleSheet()
+        
+        # Crear estilos personalizados
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
@@ -3538,5 +3544,6 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
