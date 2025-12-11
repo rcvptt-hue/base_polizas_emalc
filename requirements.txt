@@ -3,5 +3,3 @@ pandas
 gspread
 google-auth
 matplotlib
-io
-base64
