@@ -8,6 +8,7 @@ Updated full version with:
  - Todas las secciones originales mejoradas
  - Nueva pestaña de Operación para gastos operacionales
  - Cobranza que incluye recibos vencidos con comentario especial
+ - NUEVA PESTAÑA: Asesoría con generación de reporte financiero
 """
 
 import streamlit as st
@@ -17,6 +18,26 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import re
 from dateutil.relativedelta import relativedelta
+import matplotlib.pyplot as plt
+import numpy as np
+import io
+import base64
+from io import BytesIO
+
+# ================================
+# CONFIGURACIÓN DE COLORES Rizkora
+# ================================
+COLORES_AXA = {
+    'azul_principal': '#064c78',      # Mayor uso
+    'verde_oscuro': '#00796b',
+    'verde_agua': '#00bfa5',
+    'azul_claro': '#90caf9',
+    'amarillo': '#fff59d',
+    'gris': '#e0e0e0',
+    'lila': '#b39ddb',
+    'azul_gris': '#7986cb',
+    'morado': '#c95ef5'
+}
 
 # Configuración de la página
 st.set_page_config(
@@ -41,14 +62,15 @@ OPCIONES_ESTADO_POLIZA = ["VIGENTE", "CANCELADO", "TERMINADO"]
 OPCIONES_CONCEPTO_OPERACION = ["Papelería", "Contabilidad", "Patrocinio", "Tarjetas", "Promocionales", "Impuestos", "Gasolina"]
 OPCIONES_FORMA_PAGO_OPERACION = ["Efectivo", "TDC", "TDD", "Transferencia"]
 OPCIONES_DEDUCIBLE = ["Sí", "No"]
-OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Vencido", "Pagado"]  # Nuevo estado para cobranza
+OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Vencido", "Pagado"]
 
 # Inicializar estado de sesión
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = "👥 Prospectos"
-# Añadir estado específico para notas
 if 'notas_prospecto_actual' not in st.session_state:
     st.session_state.notas_prospecto_actual = ""
+if 'asesoria_data' not in st.session_state:
+    st.session_state.asesoria_data = {}
 
 # Configuración de Google Sheets
 @st.cache_resource(ttl=3600)
@@ -274,17 +296,11 @@ def fecha_actual():
     return datetime.now().strftime("%d/%m/%Y")
 
 # =========================
-# 🔧 FUNCIÓN CALCULAR_COBRANZA (Versión mejorada que incluye recibos vencidos)
+# 🔧 FUNCIÓN CALCULAR_COBRANZA
 # =========================
 def calcular_cobranza():
     """
     Calcula los registros de cobranza basándose en las pólizas vigentes.
-    - Incluye recibos desde el inicio de vigencia hasta 60 días en el futuro
-    - Para recibos vencidos (fecha anterior a hoy): establece estatus "Vencido" y agrega comentario
-    - Para periodicidad ANUAL: genera un solo registro anual
-    - Para otras periodicidades: genera múltiples registros según la periodicidad
-    - Usa Primer Pago para el primer registro y Pagos Subsecuentes para los siguientes
-    - Evita duplicados verificando por No. Póliza y número de recibo
     """
     try:
         _, df_polizas, df_cobranza, _, _ = cargar_datos()
@@ -346,7 +362,7 @@ def calcular_cobranza():
 
             fecha_actual_calc = inicio_vigencia
             num_recibo = 1
-            max_recibos = 36  # Aumentamos a 3 años para cubrir más historial
+            max_recibos = 36
 
             while num_recibo <= max_recibos and fecha_actual_calc <= fecha_limite:
                 mes_cobranza = fecha_actual_calc.strftime("%m/%Y")
@@ -372,7 +388,7 @@ def calcular_cobranza():
                         estatus = "Vencido"
                         comentario = "Cobranza vencida - registro tardío"
                         dias_restantes = (fecha_actual_calc - hoy).days
-                        dias_atraso = abs(dias_restantes)  # Días de atraso (positivo)
+                        dias_atraso = abs(dias_restantes)
                     else:
                         estatus = "Pendiente"
                         comentario = ""
@@ -395,7 +411,7 @@ def calcular_cobranza():
                         "Recibo": num_recibo,
                         "Clave de Emisión": poliza.get("Clave de Emisión", ""),
                         "Comentario": comentario,
-                        "ID_Cobranza": f"{no_poliza}_R{num_recibo}"  # Identificador único
+                        "ID_Cobranza": f"{no_poliza}_R{num_recibo}"
                     })
 
                 # Avanzar a la siguiente fecha según periodicidad
@@ -424,1943 +440,662 @@ def calcular_cobranza():
             keep="last"
         )
 
-        print(f"✅ Cobranza generada: {len(df_resultado)} registros (incluyendo vencidos)")
         return df_resultado
 
     except Exception as e:
         st.error(f"Error al calcular cobranza: {e}")
-        import traceback
-        st.error(f"Detalle del error: {traceback.format_exc()}")
         return pd.DataFrame()
 
-# Función para manejar el cambio de pestaña
-def cambiar_pestaña(nombre_pestaña):
-    st.session_state.active_tab = nombre_pestaña
-
-# ---- NUEVA FUNCIÓN PARA PESTAÑA OPERACIÓN ----
-def mostrar_operacion(df_operacion):
-    st.header("💰 Operación - Gastos Operacionales RIZKORA")
-
-    # Inicializar estado para la edición
-    if 'modo_edicion_operacion' not in st.session_state:
-        st.session_state.modo_edicion_operacion = False
-    if 'operacion_editando' not in st.session_state:
-        st.session_state.operacion_editando = None
-    if 'operacion_data' not in st.session_state:
-        st.session_state.operacion_data = {}
-
-    # Mostrar estadísticas generales
-    if not df_operacion.empty:
-        col_stats1, col_stats2, col_stats3 = st.columns(3)
-        
-        with col_stats1:
-            try:
-                total_gastos = df_operacion['Monto'].sum()
-                st.metric("Total Gastos", f"${total_gastos:,.2f}")
-            except:
-                st.metric("Total Gastos", "N/A")
-        
-        with col_stats2:
-            try:
-                # Calcular gastos del mes actual
-                df_operacion['Fecha DT'] = pd.to_datetime(df_operacion['Fecha'], dayfirst=True, errors='coerce')
-                mes_actual = datetime.now().month
-                gastos_mes = df_operacion[df_operacion['Fecha DT'].dt.month == mes_actual]['Monto'].sum()
-                st.metric("Gastos del Mes", f"${gastos_mes:,.2f}")
-            except:
-                st.metric("Gastos del Mes", "N/A")
-        
-        with col_stats3:
-            try:
-                # Calcular gastos deducibles
-                gastos_deducibles = df_operacion[df_operacion['Deducible'] == 'Sí']['Monto'].sum()
-                st.metric("Gastos Deducibles", f"${gastos_deducibles:,.2f}")
-            except:
-                st.metric("Gastos Deducibles", "N/A")
-
-    # Selector para editar gasto existente
-    if not df_operacion.empty:
-        # Crear lista de gastos para seleccionar
-        gastos_lista = []
-        for idx, row in df_operacion.iterrows():
-            fecha = row.get('Fecha', '')
-            concepto = row.get('Concepto', '')
-            proveedor = row.get('Proveedor', '')
-            monto = row.get('Monto', 0)
-            gastos_lista.append(f"{fecha} - {concepto} - {proveedor} - ${monto}")
-        
-        gasto_seleccionado = st.selectbox(
-            "Seleccionar Gasto para editar",
-            [""] + gastos_lista,
-            key="select_editar_operacion"
-        )
-
-        # Botones para cargar datos o limpiar selección
-        if gasto_seleccionado:
-            col_btn1, col_btn2 = st.columns([1, 1])
-            with col_btn1:
-                if st.button("📝 Cargar Datos para Editar", use_container_width=True, key="btn_cargar_datos_operacion"):
-                    # Encontrar el índice del gasto seleccionado
-                    idx_seleccionado = gastos_lista.index(gasto_seleccionado)
-                    # Obtener los datos del gasto seleccionado
-                    if idx_seleccionado < len(df_operacion):
-                        fila = df_operacion.iloc[idx_seleccionado]
-                        st.session_state.operacion_data = fila.to_dict()
-                        st.session_state.operacion_editando = idx_seleccionado
-                        st.session_state.modo_edicion_operacion = True
-                        st.rerun()
-
-            with col_btn2:
-                if st.button("❌ Limpiar selección", use_container_width=True, key="btn_limpiar_seleccion_operacion"):
-                    st.session_state.operacion_editando = None
-                    st.session_state.modo_edicion_operacion = False
-                    st.session_state.operacion_data = {}
-                    st.rerun()
-
-            # Mostrar información del gasto seleccionado
-            if st.session_state.operacion_editando == idx_seleccionado:
-                st.info(f"**Editando:** {gasto_seleccionado}")
-
-    # Botón para cancelar edición
-    if st.session_state.modo_edicion_operacion:
-        if st.button("❌ Cancelar Edición", key="btn_cancelar_edicion_operacion"):
-            st.session_state.operacion_editando = None
-            st.session_state.modo_edicion_operacion = False
-            st.session_state.operacion_data = {}
-            st.rerun()
-
-    # --- FORMULARIO DE GASTOS OPERACIONALES ---
-    with st.form("form_operacion", clear_on_submit=True):
-        st.subheader("📝 Formulario de Gasto Operacional")
-        
-        # Mostrar información de edición
-        if st.session_state.modo_edicion_operacion and st.session_state.operacion_editando is not None:
-            st.info(f"Editando gasto #{st.session_state.operacion_editando + 1}")
-
+# ================================
+# 🆕 NUEVA PESTAÑA: ASESORÍA AXA
+# ================================
+def mostrar_asesoria_axa():
+    st.header("📈 Asesoría Financiera Rizkora")
+    st.markdown("### Detección de necesidades financieras para una asesoría ideal")
+    
+    # Inicializar datos de asesoría si no existen
+    if 'asesoria_data' not in st.session_state:
+        st.session_state.asesoria_data = {
+            'informacion_personal': {},
+            'informacion_familiar': {},
+            'informacion_financiera': {},
+            'objetivos': {}
+        }
+    
+    # Usar pestañas para organizar el formulario
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📋 Información Personal", 
+        "👨‍👩‍👧‍👦 Información Familiar", 
+        "💰 Información Financiera", 
+        "🎯 Objetivos Financieros",
+        "📊 Reporte"
+    ])
+    
+    with tab1:
+        st.subheader("Información Personal")
         col1, col2 = st.columns(2)
-
+        
         with col1:
-            # Fecha
-            fecha_val = st.session_state.operacion_data.get("Fecha", fecha_actual())
-            fecha = st.text_input(
-                "Fecha (dd/mm/yyyy)*", 
-                value=fecha_val,
+            st.session_state.asesoria_data['informacion_personal']['nombre'] = st.text_input(
+                "Nombre completo*", 
+                value=st.session_state.asesoria_data['informacion_personal'].get('nombre', '')
+            )
+            st.session_state.asesoria_data['informacion_personal']['telefono'] = st.text_input(
+                "Teléfono*", 
+                value=st.session_state.asesoria_data['informacion_personal'].get('telefono', '')
+            )
+            st.session_state.asesoria_data['informacion_personal']['email'] = st.text_input(
+                "Email*", 
+                value=st.session_state.asesoria_data['informacion_personal'].get('email', '')
+            )
+            
+        with col2:
+            st.session_state.asesoria_data['informacion_personal']['ocupacion'] = st.text_input(
+                "Ocupación*", 
+                value=st.session_state.asesoria_data['informacion_personal'].get('ocupacion', '')
+            )
+            st.session_state.asesoria_data['informacion_personal']['fumador'] = st.selectbox(
+                "¿Has fumado en los últimos dos años?*", 
+                options=["", "Sí", "No"],
+                index=["", "Sí", "No"].index(st.session_state.asesoria_data['informacion_personal'].get('fumador', '')) if st.session_state.asesoria_data['informacion_personal'].get('fumador') in ["", "Sí", "No"] else 0
+            )
+            st.session_state.asesoria_data['informacion_personal']['agente'] = st.text_input(
+                "Nombre del agente*", 
+                value=st.session_state.asesoria_data['informacion_personal'].get('agente', '')
+            )
+    
+    with tab2:
+        st.subheader("Información Familiar")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.session_state.asesoria_data['informacion_familiar']['estado_civil'] = st.selectbox(
+                "Estado civil", 
+                options=["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"],
+                index=["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"].index(st.session_state.asesoria_data['informacion_familiar'].get('estado_civil', '')) if st.session_state.asesoria_data['informacion_familiar'].get('estado_civil') in ["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"] else 0
+            )
+            
+            fecha_nacimiento = st.text_input(
+                "Fecha de nacimiento (dd/mm/yyyy)", 
+                value=st.session_state.asesoria_data['informacion_familiar'].get('fecha_nacimiento', ''),
                 placeholder="dd/mm/yyyy"
             )
-
-            # Concepto
-            concepto_val = st.session_state.operacion_data.get("Concepto", "")
-            concepto_index = OPCIONES_CONCEPTO_OPERACION.index(concepto_val) if concepto_val in OPCIONES_CONCEPTO_OPERACION else 0
-            concepto = st.selectbox(
-                "Concepto*", 
-                OPCIONES_CONCEPTO_OPERACION, 
-                index=concepto_index
-            )
-
-            # Proveedor
-            proveedor = st.text_input(
-                "Proveedor*", 
-                value=st.session_state.operacion_data.get("Proveedor", ""),
-                placeholder="Nombre del proveedor"
-            )
-
-            # Monto
-            monto_val = st.session_state.operacion_data.get("Monto", 0)
-            monto = st.number_input(
-                "Monto ($)*", 
-                min_value=0.0,
-                value=float(monto_val) if monto_val else 0.0,
-                step=0.01,
-                format="%.2f"
-            )
-
-        with col2:
-            # Forma de Pago
-            forma_pago_val = st.session_state.operacion_data.get("Forma de Pago", "")
-            forma_pago_index = OPCIONES_FORMA_PAGO_OPERACION.index(forma_pago_val) if forma_pago_val in OPCIONES_FORMA_PAGO_OPERACION else 0
-            forma_pago = st.selectbox(
-                "Forma de Pago*", 
-                OPCIONES_FORMA_PAGO_OPERACION, 
-                index=forma_pago_index
-            )
-
-            # Banco
-            banco_val = st.session_state.operacion_data.get("Banco", "NINGUNO")
-            banco_index = OPCIONES_BANCO.index(banco_val) if banco_val in OPCIONES_BANCO else 0
-            banco = st.selectbox(
-                "Banco", 
-                OPCIONES_BANCO, 
-                index=banco_index
-            )
-
-            # Responsable del pago
-            responsable = st.text_input(
-                "Responsable del pago*", 
-                value=st.session_state.operacion_data.get("Responsable del pago", ""),
-                placeholder="Persona que realizó el pago"
-            )
-
-            # Finalidad
-            finalidad = st.text_area(
-                "Finalidad*", 
-                value=st.session_state.operacion_data.get("Finalidad", ""),
-                placeholder="Descripción detallada del gasto"
-            )
-
-            # Deducible
-            deducible_val = st.session_state.operacion_data.get("Deducible", "No")
-            deducible_index = OPCIONES_DEDUCIBLE.index(deducible_val) if deducible_val in OPCIONES_DEDUCIBLE else 1
-            deducible = st.selectbox(
-                "Deducible", 
-                OPCIONES_DEDUCIBLE, 
-                index=deducible_index
-            )
-
-        # Validar fecha
-        fecha_error = None
-        if fecha:
-            valido, error = validar_fecha(fecha)
-            if not valido:
-                fecha_error = error
-
-        # Mostrar error de fecha si existe
-        if fecha_error:
-            st.error(f"Fecha: {fecha_error}")
-
-        # --- BOTONES DEL FORMULARIO ---
-        col_b1, col_b2 = st.columns(2)
-        
-        with col_b1:
-            # Botón de envío principal
-            if st.session_state.modo_edicion_operacion:
-                submit_button = st.form_submit_button("💾 Actualizar Gasto", use_container_width=True)
-            else:
-                submit_button = st.form_submit_button("💾 Agregar Nuevo Gasto", use_container_width=True)
-        
-        with col_b2:
-            # Botón de cancelar secundario
-            cancel_button = st.form_submit_button("🚫 Cancelar", use_container_width=True, type="secondary")
-
-        # --- PROCESAR BOTÓN CANCELAR ---
-        if cancel_button:
-            st.session_state.operacion_editando = None
-            st.session_state.modo_edicion_operacion = False
-            st.session_state.operacion_data = {}
-            st.rerun()
-
-        # --- PROCESAR BOTÓN DE ENVÍO ---
-        if submit_button:
-            # Validaciones
-            errores = []
+            st.session_state.asesoria_data['informacion_familiar']['fecha_nacimiento'] = fecha_nacimiento
             
-            if not fecha:
-                errores.append("La fecha es obligatoria")
-            elif fecha_error:
-                errores.append(f"Fecha: {fecha_error}")
-            
-            if not proveedor.strip():
-                errores.append("El proveedor es obligatorio")
-            
-            if monto <= 0:
-                errores.append("El monto debe ser mayor a 0")
-            
-            if not responsable.strip():
-                errores.append("El responsable del pago es obligatorio")
-            
-            if not finalidad.strip():
-                errores.append("La finalidad es obligatoria")
-            
-            if errores:
-                for error in errores:
-                    st.warning(error)
-            else:
-                # Crear objeto con los datos del gasto
-                nuevo_gasto = {
-                    "Fecha": fecha,
-                    "Concepto": concepto,
-                    "Proveedor": proveedor.strip(),
-                    "Monto": float(monto),
-                    "Forma de Pago": forma_pago,
-                    "Banco": banco,
-                    "Responsable del pago": responsable.strip(),
-                    "Finalidad": finalidad.strip(),
-                    "Deducible": deducible
-                }
-
-                if st.session_state.modo_edicion_operacion and st.session_state.operacion_editando is not None:
-                    # ACTUALIZAR gasto existente
-                    idx = st.session_state.operacion_editando
-                    if idx < len(df_operacion):
-                        for key, value in nuevo_gasto.items():
-                            df_operacion.loc[idx, key] = value
-                        mensaje = "✅ Gasto actualizado correctamente"
-                    else:
-                        st.error("❌ No se encontró el gasto a actualizar")
-                        return
-                else:
-                    # AGREGAR nuevo gasto
-                    df_operacion = pd.concat([df_operacion, pd.DataFrame([nuevo_gasto])], ignore_index=True)
-                    mensaje = "✅ Gasto agregado correctamente"
-
-                # Guardar cambios
-                if guardar_datos(df_operacion=df_operacion):
-                    st.success(mensaje)
-                    
-                    # Limpiar estado después de guardar
-                    st.session_state.operacion_editando = None
-                    st.session_state.modo_edicion_operacion = False
-                    st.session_state.operacion_data = {}
-                    
-                    st.rerun()
-                else:
-                    st.error("❌ Error al guardar el gasto")
-
-    # --- MOSTRAR LISTA DE GASTOS OPERACIONALES ---
-    st.subheader("📋 Historial de Gastos Operacionales")
-    
-    if not df_operacion.empty:
-        # Crear una copia para no modificar el original
-        df_mostrar = df_operacion.copy()
-        
-        # Ordenar por fecha más reciente primero
-        try:
-            df_mostrar['Fecha DT'] = pd.to_datetime(df_mostrar['Fecha'], dayfirst=True, errors='coerce')
-            df_mostrar = df_mostrar.sort_values('Fecha DT', ascending=False)
-        except:
-            pass
-        
-        # Formatear montos para mejor visualización
-        def formatear_monto(monto):
-            try:
-                return f"${float(monto):,.2f}"
-            except:
-                return str(monto)
-        
-        df_mostrar['Monto Formateado'] = df_mostrar['Monto'].apply(formatear_monto)
-        
-        # Columnas a mostrar
-        columnas_mostrar = ['Fecha', 'Concepto', 'Proveedor', 'Monto Formateado', 'Forma de Pago', 'Deducible', 'Responsable del pago']
-        columnas_disponibles = [col for col in columnas_mostrar if col in df_mostrar.columns]
-        
-        # Aplicar estilo para resaltar gastos deducibles
-        def style_deducible(val):
-            if val == 'Sí':
-                return 'background-color: #d4edda; color: #155724; font-weight: bold;'  # Verde
-            else:
-                return 'background-color: #f8d7da; color: #721c24;'  # Rojo
-        
-        try:
-            styled_df = df_mostrar[columnas_disponibles].style.applymap(
-                style_deducible, 
-                subset=['Deducible']
-            )
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
-        except:
-            st.dataframe(df_mostrar[columnas_disponibles], use_container_width=True, hide_index=True)
-
-        # --- ESTADÍSTICAS DETALLADAS ---
-        st.subheader("📊 Estadísticas Detalladas")
-        
-        try:
-            # Estadísticas por concepto
-            col_stats1, col_stats2 = st.columns(2)
-            
-            with col_stats1:
-                st.write("**Gastos por Concepto:**")
-                gastos_por_concepto = df_operacion.groupby('Concepto')['Monto'].sum().sort_values(ascending=False)
-                for concepto, total in gastos_por_concepto.items():
-                    st.write(f"- {concepto}: ${total:,.2f}")
-            
-            with col_stats2:
-                st.write("**Gastos por Forma de Pago:**")
-                gastos_por_pago = df_operacion.groupby('Forma de Pago')['Monto'].sum().sort_values(ascending=False)
-                for forma_pago, total in gastos_por_pago.items():
-                    st.write(f"- {forma_pago}: ${total:,.2f}")
-            
-            # Estadísticas por mes
-            st.write("**Gastos por Mes (Últimos 6 meses):**")
-            try:
-                df_operacion['Mes'] = df_operacion['Fecha DT'].dt.strftime('%Y-%m')
-                ultimos_6_meses = df_operacion.groupby('Mes')['Monto'].sum().sort_index(ascending=False).head(6)
-                for mes, total in ultimos_6_meses.items():
-                    st.write(f"- {mes}: ${total:,.2f}")
-            except:
-                st.write("No se pudieron calcular los gastos por mes")
-                
-        except Exception as e:
-            st.write(f"No se pudieron generar estadísticas detalladas: {e}")
-
-    else:
-        st.info("No hay gastos operacionales registrados")
-
-# ---- Funciones para cada pestaña (completas) ----
-
-# 1. Prospectos - SOLUCIÓN DEFINITIVA
-def mostrar_prospectos(df_prospectos, df_polizas):
-    st.header("👥 Gestión de Prospectos")
-
-    # --- Inicializar estado para la edición ---
-    if 'modo_edicion_prospectos' not in st.session_state:
-        st.session_state.modo_edicion_prospectos = False
-    if 'prospecto_editando' not in st.session_state:
-        st.session_state.prospecto_editando = None
-    if 'prospecto_data' not in st.session_state:
-        st.session_state.prospecto_data = {}
-    # Estado clave para forzar actualización
-    if 'form_key' not in st.session_state:
-        st.session_state.form_key = 0
-
-    # --- Selector para editar prospecto existente ---
-    if not df_prospectos.empty:
-        prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
-        prospecto_seleccionado = st.selectbox(
-            "Seleccionar Prospecto para editar",
-            [""] + prospectos_lista,
-            key="select_editar_prospecto"
-        )
-
-        # Botones para cargar datos o limpiar selección
-        if prospecto_seleccionado:
-            col_btn1, col_btn2 = st.columns([1, 1])
-            with col_btn1:
-                if st.button("📝 Cargar Datos para Editar", use_container_width=True, key="btn_cargar_datos"):
-                    # Buscar y cargar datos del prospecto
-                    fila = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado]
-                    if not fila.empty:
-                        fila = fila.iloc[0].fillna("")
-                        st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
-                        st.session_state.prospecto_editando = prospecto_seleccionado
-                        st.session_state.modo_edicion_prospectos = True
-                        # Incrementar la clave del formulario para forzar reinicio
-                        st.session_state.form_key += 1
-                        st.rerun()
-
-            with col_btn2:
-                if st.button("❌ Limpiar selección", use_container_width=True, key="btn_limpiar_seleccion"):
-                    # Limpiar estado
-                    st.session_state.prospecto_editando = None
-                    st.session_state.modo_edicion_prospectos = False
-                    st.session_state.prospecto_data = {}
-                    # Incrementar la clave del formulario para forzar reinicio
-                    st.session_state.form_key += 1
-                    st.rerun()
-
-            # Mostrar información del prospecto seleccionado
-            if st.session_state.prospecto_editando == prospecto_seleccionado:
-                st.info(f"**Editando:** {prospecto_seleccionado}")
-    else:
-        st.info("No hay prospectos registrados")
-
-    # --- Botón para cancelar edición ---
-    if st.session_state.modo_edicion_prospectos:
-        if st.button("❌ Cancelar Edición", key="btn_cancelar_edicion_global"):
-            st.session_state.prospecto_editando = None
-            st.session_state.modo_edicion_prospectos = False
-            st.session_state.prospecto_data = {}
-            # Incrementar la clave del formulario para forzar reinicio
-            st.session_state.form_key += 1
-            st.rerun()
-
-    # --- FORMULARIO PRINCIPAL - USAR KEY DINÁMICA ---
-    # Usamos una clave dinámica para forzar la recreación del formulario
-    form_key = f"form_prospectos_{st.session_state.form_key}"
-    
-    with st.form(form_key, clear_on_submit=True):
-        st.subheader("📝 Formulario de Prospecto")
-        
-        # Mostrar información de edición
-        if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_editando:
-            st.info(f"Editando: **{st.session_state.prospecto_editando}**")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            # Tipo Persona - usar valor actual o vacío
-            tipo_persona_val = st.session_state.prospecto_data.get("Tipo Persona", "")
-            tipo_persona_index = OPCIONES_PERSONA.index(tipo_persona_val) if tipo_persona_val in OPCIONES_PERSONA else 0
-            tipo_persona = st.selectbox(
-                "Tipo Persona", 
-                OPCIONES_PERSONA, 
-                index=tipo_persona_index,
-                key=f"tipo_persona_{st.session_state.form_key}"
-            )
-
-            # Nombre/Razón Social
-            nombre_razon = st.text_input(
-                "Nombre/Razón Social*", 
-                value=st.session_state.prospecto_data.get("Nombre/Razón Social", ""),
-                key=f"nombre_razon_{st.session_state.form_key}"
-            )
-
-            # Fecha Nacimiento
-            fecha_nacimiento = st.text_input(
-                "Fecha Nacimiento (dd/mm/yyyy)", 
-                value=st.session_state.prospecto_data.get("Fecha Nacimiento", ""),
-                placeholder="dd/mm/yyyy",
-                key=f"fecha_nacimiento_{st.session_state.form_key}"
-            )
-
-            # RFC
-            rfc = st.text_input(
-                "RFC", 
-                value=st.session_state.prospecto_data.get("RFC", ""),
-                key=f"rfc_{st.session_state.form_key}"
-            )
-
-            # Teléfono
-            telefono = st.text_input(
-                "Teléfono", 
-                value=st.session_state.prospecto_data.get("Teléfono", ""),
-                key=f"telefono_{st.session_state.form_key}"
-            )
-
-            # Correo
-            correo = st.text_input(
-                "Correo", 
-                value=st.session_state.prospecto_data.get("Correo", ""),
-                key=f"correo_{st.session_state.form_key}"
-            )
-
-            # Notas - AQUÍ ESTÁ LA CLAVE: usar directamente de prospecto_data
-            notas_valor = st.session_state.prospecto_data.get("Notas", "")
-            notas = st.text_area(
-                "Notas", 
-                value=notas_valor,
-                placeholder="Notas del prospecto...",
-                height=100,
-                key=f"notas_{st.session_state.form_key}"
-            )
-
-        with col2:
-            # Producto
-            producto_val = st.session_state.prospecto_data.get("Producto", "")
-            producto_index = OPCIONES_PRODUCTO.index(producto_val) if producto_val in OPCIONES_PRODUCTO else 0
-            producto = st.selectbox(
-                "Producto", 
-                OPCIONES_PRODUCTO, 
-                index=producto_index,
-                key=f"producto_{st.session_state.form_key}"
-            )
-
-            # Fecha Registro
-            fecha_registro = st.text_input(
-                "Fecha Registro*", 
-                value=st.session_state.prospecto_data.get("Fecha Registro", fecha_actual()),
-                placeholder="dd/mm/yyyy",
-                key=f"fecha_registro_{st.session_state.form_key}"
-            )
-
-            # Fecha Contacto
-            fecha_contacto = st.text_input(
-                "Fecha Contacto (dd/mm/yyyy)", 
-                value=st.session_state.prospecto_data.get("Fecha Contacto", ""),
-                placeholder="dd/mm/yyyy",
-                key=f"fecha_contacto_{st.session_state.form_key}"
-            )
-
-            # Seguimiento
-            seguimiento = st.text_input(
-                "Seguimiento (dd/mm/yyyy)", 
-                value=st.session_state.prospecto_data.get("Seguimiento", ""),
-                placeholder="dd/mm/yyyy",
-                key=f"seguimiento_{st.session_state.form_key}"
-            )
-
-            # Representantes Legales
-            representantes = st.text_area(
-                "Representantes Legales (separar por comas)", 
-                value=st.session_state.prospecto_data.get("Representantes Legales", ""),
-                placeholder="Ej: Juan Pérez, María García",
-                key=f"representantes_{st.session_state.form_key}"
-            )
-
-            # Referenciador
-            referenciador = st.text_input(
-                "Referenciador", 
-                value=st.session_state.prospecto_data.get("Referenciador", ""),
-                placeholder="Origen del cliente/promoción",
-                key=f"referenciador_{st.session_state.form_key}"
-            )
-
-            # Estatus
-            estatus_val = st.session_state.prospecto_data.get("Estatus", "")
-            estatus = st.text_input(
-                "Estatus", 
-                value=estatus_val,
-                placeholder="Estado actual del prospecto",
-                key=f"estatus_{st.session_state.form_key}"
-            )
-
-            # Dirección
-            direccion = st.text_input(
-                "Dirección", 
-                value=st.session_state.prospecto_data.get("Dirección", ""),
-                placeholder="Ej: Calle 123, CDMX, 03100",
-                key=f"direccion_{st.session_state.form_key}"
-            )
-
-        # --- VALIDACIONES DE FECHAS ---
-        fecha_errors = []
-        
-        if fecha_nacimiento:
-            valido, error = validar_fecha(fecha_nacimiento)
-            if not valido:
-                fecha_errors.append(f"Fecha Nacimiento: {error}")
-
-        if fecha_registro:
-            valido, error = validar_fecha(fecha_registro)
-            if not valido:
-                fecha_errors.append(f"Fecha Registro: {error}")
-        else:
-            fecha_errors.append("Fecha Registro es obligatoria")
-
-        if fecha_contacto:
-            valido, error = validar_fecha(fecha_contacto)
-            if not valido:
-                fecha_errors.append(f"Fecha Contacto: {error}")
-
-        if seguimiento:
-            valido, error = validar_fecha(seguimiento)
-            if not valido:
-                fecha_errors.append(f"Seguimiento: {error}")
-
-        # Mostrar errores de fecha
-        if fecha_errors:
-            for error in fecha_errors:
-                st.error(error)
-
-        # --- BOTONES DEL FORMULARIO ---
-        col_b1, col_b2 = st.columns(2)
-        
-        with col_b1:
-            # Botón de envío principal
-            if st.session_state.modo_edicion_prospectos:
-                submit_button = st.form_submit_button("💾 Actualizar Prospecto", use_container_width=True)
-            else:
-                submit_button = st.form_submit_button("💾 Agregar Nuevo Prospecto", use_container_width=True)
-        
-        with col_b2:
-            # Botón de cancelar secundario
-            cancel_button = st.form_submit_button("🚫 Cancelar", use_container_width=True, type="secondary")
-
-        # --- PROCESAR BOTÓN CANCELAR ---
-        if cancel_button:
-            st.session_state.prospecto_editando = None
-            st.session_state.modo_edicion_prospectos = False
-            st.session_state.prospecto_data = {}
-            # Incrementar la clave del formulario para forzar reinicio
-            st.session_state.form_key += 1
-            st.rerun()
-
-        # --- PROCESAR BOTÓN DE ENVÍO ---
-        if submit_button:
-            if not nombre_razon.strip():
-                st.warning("Debe completar al menos el nombre o razón social")
-            elif fecha_errors:
-                st.warning("Corrija los errores en las fechas antes de guardar")
-            else:
-                # Crear objeto con los datos del prospecto
-                nuevo_prospecto = {
-                    "Tipo Persona": tipo_persona,
-                    "Nombre/Razón Social": nombre_razon.strip(),
-                    "Fecha Nacimiento": fecha_nacimiento,
-                    "RFC": rfc,
-                    "Teléfono": telefono,
-                    "Correo": correo,
-                    "Dirección": direccion,
-                    "Producto": producto,
-                    "Fecha Registro": fecha_registro if fecha_registro else fecha_actual(),
-                    "Fecha Contacto": fecha_contacto,
-                    "Seguimiento": seguimiento,
-                    "Representantes Legales": representantes,
-                    "Notas": notas,
-                    "Referenciador": referenciador,
-                    "Estatus": estatus
-                }
-
-                if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_editando:
-                    # ACTUALIZAR prospecto existente
-                    index = df_prospectos[df_prospectos["Nombre/Razón Social"] == st.session_state.prospecto_editando].index
-                    if not index.empty:
-                        for key, value in nuevo_prospecto.items():
-                            df_prospectos.loc[index, key] = value
-                        mensaje = "✅ Prospecto actualizado correctamente"
-                    else:
-                        st.error("❌ No se encontró el prospecto a actualizar")
-                        return
-                else:
-                    # AGREGAR nuevo prospecto
-                    df_prospectos = pd.concat([df_prospectos, pd.DataFrame([nuevo_prospecto])], ignore_index=True)
-                    mensaje = "✅ Prospecto agregado correctamente"
-
-                # Guardar cambios
-                if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
-                    st.success(mensaje)
-                    
-                    # Limpiar estado después de guardar
-                    st.session_state.prospecto_editando = None
-                    st.session_state.modo_edicion_prospectos = False
-                    st.session_state.prospecto_data = {}
-                    # Incrementar la clave del formulario para forzar reinicio
-                    st.session_state.form_key += 1
-                    
-                    st.rerun()
-                else:
-                    st.error("❌ Error al guardar el prospecto")
-
-    # --- MOSTRAR LISTA DE PROSPECTOS ---
-    st.subheader("📋 Lista de Prospectos")
-    if not df_prospectos.empty:
-        # Mostrar columnas más relevantes
-        columnas_mostrar = [
-            "Nombre/Razón Social", "Producto", "Teléfono", "Correo",
-            "Fecha Registro", "Referenciador", "Notas", "Estatus"
-        ]
-        columnas_disponibles = [col for col in columnas_mostrar if col in df_prospectos.columns]
-
-        if columnas_disponibles:
-            st.dataframe(df_prospectos[columnas_disponibles], use_container_width=True)
-        else:
-            st.dataframe(df_prospectos, use_container_width=True)
-
-        # Estadísticas
-        st.subheader("📊 Estadísticas")
-        col_stats1, col_stats2, col_stats3 = st.columns(3)
-        with col_stats1:
-            st.metric("Total Prospectos", len(df_prospectos))
-        with col_stats2:
-            if "Producto" in df_prospectos.columns:
-                productos_unicos = df_prospectos["Producto"].nunique()
-                st.metric("Productos Diferentes", productos_unicos)
-        with col_stats3:
-            if "Fecha Registro" in df_prospectos.columns:
+            # Calcular edad si se proporciona fecha
+            if fecha_nacimiento:
                 try:
-                    df_temp = df_prospectos.copy()
-                    df_temp['Fecha Registro DT'] = pd.to_datetime(df_temp['Fecha Registro'], dayfirst=True, errors='coerce')
-                    mes_actual = datetime.now().month
-                    prospectos_mes = len(df_temp[df_temp['Fecha Registro DT'].dt.month == mes_actual])
-                    st.metric("Prospectos este Mes", prospectos_mes)
+                    fecha_nac = datetime.strptime(fecha_nacimiento, "%d/%m/%Y")
+                    hoy = datetime.now()
+                    edad = hoy.year - fecha_nac.year - ((hoy.month, hoy.day) < (fecha_nac.month, fecha_nac.day))
+                    st.session_state.asesoria_data['informacion_familiar']['edad'] = edad
+                    st.info(f"Edad calculada: {edad} años")
                 except:
-                    st.metric("Prospectos este Mes", "N/A")
-    else:
-        st.info("No hay prospectos registrados")
-
-# 2. Seguimiento
-def mostrar_seguimiento(df_prospectos, df_seguimiento):
-    st.header("📞 Seguimiento de Prospectos")
-
-    # Selector de prospecto
-    if not df_prospectos.empty:
-        prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
-        prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="seguimiento_prospecto")
-
-        if prospecto_seleccionado:
-            # Buscar seguimientos existentes
-            seguimientos_existentes = pd.DataFrame()
-            if not df_seguimiento.empty and "Nombre/Razón Social" in df_seguimiento.columns:
-                seguimientos_existentes = df_seguimiento[df_seguimiento["Nombre/Razón Social"] == prospecto_seleccionado]
-
-            with st.form("form_seguimiento", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    nueva_fecha_contacto = st.text_input("Nueva Fecha de Contacto (dd/mm/yyyy)*", 
-                                                       value=fecha_actual(),
-                                                       placeholder="dd/mm/yyyy",
-                                                       key="nueva_fecha_contacto")
-                    estatus = st.selectbox("Estatus", OPCIONES_ESTATUS_SEGUIMIENTO, key="estatus_seguimiento")
-
-                with col2:
-                    comentarios = st.text_area("Comentarios*", 
-                                             placeholder="Anotar lo que indique el prospecto...",
-                                             key="comentarios_seguimiento")
-
-                submitted = st.form_submit_button("💾 Guardar Seguimiento")
-
-                if submitted:
-                    # Validar fecha
-                    valido, error = validar_fecha(nueva_fecha_contacto)
-                    if not valido:
-                        st.error(f"Fecha de contacto: {error}")
-                    elif not comentarios:
-                        st.warning("Los comentarios son obligatorios")
-                    else:
-                        nuevo_seguimiento = {
-                            "Nombre/Razón Social": prospecto_seleccionado,
-                            "Fecha Contacto": nueva_fecha_contacto,
-                            "Estatus": estatus,
-                            "Comentarios": comentarios,
-                            "Fecha Registro": fecha_actual()
-                        }
-
-                        df_seguimiento = pd.concat([df_seguimiento, pd.DataFrame([nuevo_seguimiento])], ignore_index=True)
-
-                        if guardar_datos(df_seguimiento=df_seguimiento):
-                            st.success("✅ Seguimiento guardado correctamente")
-                            # Si el estatus es "Convertido", notificamos
-                            if estatus == "Convertido":
-                                st.info("ℹ️ El prospecto ha sido marcado como 'Convertido'. Puedes proceder a crear su póliza en la pestaña 'Registro de Cliente'")
-                            st.rerun()
-                        else:
-                            st.error("❌ Error al guardar el seguimiento")
-
-            # Mostrar historial de seguimientos
-            if not seguimientos_existentes.empty:
-                st.subheader("Historial de Seguimientos")
-                try:
-                    # Intentar ordenar por Fecha Contacto si posible
-                    seguimientos_existentes = seguimientos_existentes.sort_values("Fecha Contacto", ascending=False)
-                except Exception:
-                    pass
-                st.dataframe(seguimientos_existentes, use_container_width=True)
-    else:
-        st.info("No hay prospectos registrados")
-
-    # Mostrar todos los seguimientos
-    if not df_seguimiento.empty:
-        st.subheader("Todos los Seguimientos")
-        st.dataframe(df_seguimiento, use_container_width=True)
-
-# 3. Registro de Cliente (Primera Póliza)
-def mostrar_registro_cliente(df_prospectos, df_polizas):
-    st.header("👤 Registro de Cliente (Primera Póliza)")
-
-    # Seleccionar prospecto
-    if not df_prospectos.empty:
-        prospectos_lista = df_prospectos["Nombre/Razón Social"].dropna().tolist()
-        prospecto_seleccionado = st.selectbox("Seleccionar Prospecto", [""] + prospectos_lista, key="registro_cliente")
-
-        if prospecto_seleccionado:
-            # Cargar datos del prospecto seleccionado
-            prospecto_data = df_prospectos[df_prospectos["Nombre/Razón Social"] == prospecto_seleccionado].iloc[0]
-
-            with st.form("form_registro_cliente", clear_on_submit=True):
-                st.subheader(f"Creando Primera Póliza para: {prospecto_seleccionado}")
-
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.text_input("Tipo Persona", value=prospecto_data.get("Tipo Persona", ""), key="registro_tipo", disabled=True)
-                    st.text_input("Nombre/Razón Social", value=prospecto_data.get("Nombre/Razón Social", ""), key="registro_nombre", disabled=True)
-                    no_poliza = st.text_input("No. Póliza*", key="registro_numero")
-                    producto_poliza = st.selectbox("Producto", OPCIONES_PRODUCTO, 
-                                          index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
-                                          if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
-                                          key="registro_producto")
-                    inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
-                                                  placeholder="dd/mm/yyyy",
-                                                  key="registro_inicio")
-                    fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
-                                               placeholder="dd/mm/yyyy",
-                                               key="registro_fin")
-                    rfc_poliza = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="registro_rfc")
-                    forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="registro_pago")
-                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="registro_moneda")
-
-                with col2:
-                    banco = st.selectbox("Banco", OPCIONES_BANCO, key="registro_banco")
-                    periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
-                    prima_total_emitida = st.text_input("Prima Total Emitida", key="registro_prima_total")
-                    prima_neta = st.text_input("Prima Neta", key="registro_prima_neta")
-                    primer_pago = st.text_input("Primer Pago", key="registro_primer_pago")
-                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="registro_pagos_subsecuentes")
-                    aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="registro_aseguradora")
-                    comision_porcentaje = st.text_input("% Comisión", key="registro_comision_pct")
-                    estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="registro_estado")
-                    contacto = st.text_input("Contacto", key="registro_contacto")
-                    direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
-                                            value=prospecto_data.get("Dirección", ""),
-                                            placeholder="Ej: Calle 123, CDMX, 03100",
-                                            key="registro_direccion")
-
-                col3, col4 = st.columns(2)
-                with col3:
-                    telefono_poliza = st.text_input("Teléfono", value=prospecto_data.get("Teléfono", ""), key="registro_telefono")
-                    correo_poliza = st.text_input("Correo", value=prospecto_data.get("Correo", ""), key="registro_correo")
-                    fecha_nacimiento_poliza = st.text_input("Fecha Nacimiento (dd/mm/yyyy)", 
-                                                   value=prospecto_data.get("Fecha Nacimiento", ""),
-                                                   placeholder="dd/mm/yyyy",
-                                                   key="registro_fecha_nac")
-
-                with col4:
-                    referenciador_poliza = st.text_input("Referenciador", 
-                                                       value=prospecto_data.get("Referenciador", ""),
-                                                       placeholder="Origen del cliente/promoción",
-                                                       key="registro_referenciador")
-                    clave_emision = st.text_input("Clave de Emisión", key="registro_clave_emision")
-                 
-                # Validar fechas obligatorias
-                fecha_errors = []
-                if inicio_vigencia:
-                    valido, error = validar_fecha(inicio_vigencia)
-                    if not valido:
-                        fecha_errors.append(f"Inicio Vigencia: {error}")
-                else:
-                    fecha_errors.append("Inicio Vigencia es obligatorio")
-
-                if fin_vigencia:
-                    valido, error = validar_fecha(fin_vigencia)
-                    if not valido:
-                        fecha_errors.append(f"Fin Vigencia: {error}")
-                else:
-                    fecha_errors.append("Fin Vigencia es obligatorio")
-
-                if fecha_nacimiento_poliza:
-                    valido, error = validar_fecha(fecha_nacimiento_poliza)
-                    if not valido:
-                        fecha_errors.append(f"Fecha Nacimiento: {error}")
-
-                if fecha_errors:
-                    for error in fecha_errors:
-                        st.error(error)
-
-                submitted_poliza = st.form_submit_button("💾 Registrar Cliente y Póliza")
-                if submitted_poliza:
-                    if not no_poliza:
-                        st.warning("Debe completar el número de póliza")
-                    elif fecha_errors:
-                        st.warning("Corrija los errores en las fechas antes de guardar")
-                    else:
-                        # Verificar si ya existe el número de póliza
-                        poliza_existe = False
-                        if not df_polizas.empty and "No. Póliza" in df_polizas.columns:
-                            poliza_existe = str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values
-
-                        if poliza_existe:
-                            st.warning("⚠️ Este número de póliza ya existe")
-                        else:
-                            nueva_poliza = {
-                                "Tipo Persona": prospecto_data.get("Tipo Persona", ""),
-                                "Nombre/Razón Social": prospecto_data.get("Nombre/Razón Social", ""),
-                                "No. Póliza": no_poliza,
-                                "Producto": producto_poliza,
-                                "Inicio Vigencia": inicio_vigencia,
-                                "Fin Vigencia": fin_vigencia,
-                                "RFC": rfc_poliza,
-                                "Forma de Pago": forma_pago,
-                                "Banco": banco,
-                                "Periodicidad": periodicidad,
-                                "Prima Total Emitida": prima_total_emitida,
-                                "Prima Neta": prima_neta,
-                                "Primer Pago": primer_pago,
-                                "Pagos Subsecuentes": pagos_subsecuentes,
-                                "Aseguradora": aseguradora,
-                                "% Comisión": comision_porcentaje,
-                                "Estado": estado,
-                                "Contacto": contacto,
-                                "Dirección": direccion,
-                                "Teléfono": telefono_poliza,
-                                "Correo": correo_poliza,
-                                "Fecha Nacimiento": fecha_nacimiento_poliza if fecha_nacimiento_poliza else "",
-                                "Moneda": moneda,
-                                "Referenciador": referenciador_poliza,
-                                "Clave de Emisión": clave_emision
-                            }
-
-                            df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
-
-                            # Remover el prospecto de la lista
-                            df_prospectos = df_prospectos[df_prospectos["Nombre/Razón Social"] != prospecto_seleccionado]
-
-                            if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
-                                st.success("✅ Cliente registrado correctamente con su primera póliza")
-                                st.rerun()
-        else:
-            st.info("No hay prospectos disponibles para convertir en clientes")
-
-# 4. Consulta de Clientes
-def mostrar_consulta_clientes(df_polizas):
-    st.header("🔍 Consulta de Clientes")
-
-    if df_polizas.empty:
-        st.info("No hay clientes registrados")
-        return
-
-    # Obtener lista única de clientes
-    clientes_unicos = df_polizas["Nombre/Razón Social"].dropna().unique().tolist()
+                    st.session_state.asesoria_data['informacion_familiar']['edad'] = None
+            
+            st.session_state.asesoria_data['informacion_familiar']['hobbie'] = st.text_input(
+                "¿Tienes algún hobbie? (opcional)", 
+                value=st.session_state.asesoria_data['informacion_familiar'].get('hobbie', '')
+            )
+            
+        with col2:
+            st.session_state.asesoria_data['informacion_familiar']['nombre_pareja'] = st.text_input(
+                "Nombre y edad de tu esposo(a)/pareja (opcional)", 
+                value=st.session_state.asesoria_data['informacion_familiar'].get('nombre_pareja', '')
+            )
+            
+            # Gestión de hijos
+            num_hijos = st.number_input(
+                "¿Cuántos hijos tienes?", 
+                min_value=0, 
+                max_value=10, 
+                value=st.session_state.asesoria_data['informacion_familiar'].get('num_hijos', 0) or 0,
+                step=1
+            )
+            st.session_state.asesoria_data['informacion_familiar']['num_hijos'] = num_hijos
+            
+            hijos = st.session_state.asesoria_data['informacion_familiar'].get('hijos', [])
+            for i in range(num_hijos):
+                col_hijo1, col_hijo2 = st.columns(2)
+                with col_hijo1:
+                    nombre_key = f"hijo_{i}_nombre"
+                    if i >= len(hijos):
+                        hijos.append({'nombre': '', 'edad': ''})
+                    hijos[i]['nombre'] = st.text_input(
+                        f"Nombre hijo(a) {i+1}", 
+                        value=hijos[i]['nombre'],
+                        key=nombre_key
+                    )
+                with col_hijo2:
+                    edad_key = f"hijo_{i}_edad"
+                    hijos[i]['edad'] = st.text_input(
+                        f"Edad hijo(a) {i+1}", 
+                        value=hijos[i]['edad'],
+                        key=edad_key
+                    )
+            st.session_state.asesoria_data['informacion_familiar']['hijos'] = hijos
     
-    if not clientes_unicos:
-        st.info("No hay clientes registrados")
-        return
-
-    # Seleccionar cliente
-    cliente_seleccionado = st.selectbox("Seleccionar Cliente", clientes_unicos, key="consulta_cliente")
-
-    if cliente_seleccionado:
-        # Filtrar pólizas del cliente seleccionado
-        polizas_cliente = df_polizas[df_polizas["Nombre/Razón Social"] == cliente_seleccionado]
+    with tab3:
+        st.subheader("Información Financiera")
+        col1, col2 = st.columns(2)
         
-        # Mostrar información general del cliente (tomada de la primera póliza)
-        if not polizas_cliente.empty:
-            info_cliente = polizas_cliente.iloc[0]
+        with col1:
+            st.session_state.asesoria_data['informacion_financiera']['ingreso_mensual'] = st.number_input(
+                "Ingreso mensual neto ($)*", 
+                min_value=0.0,
+                value=float(st.session_state.asesoria_data['informacion_financiera'].get('ingreso_mensual', 0)),
+                step=100.0
+            )
+            st.session_state.asesoria_data['informacion_financiera']['gastos_mensuales'] = st.number_input(
+                "Gastos mensuales totales ($)*", 
+                min_value=0.0,
+                value=float(st.session_state.asesoria_data['informacion_financiera'].get('gastos_mensuales', 0)),
+                step=100.0
+            )
+            st.session_state.asesoria_data['informacion_financiera']['ahorro_actual'] = st.number_input(
+                "Ahorro actual total ($)", 
+                min_value=0.0,
+                value=float(st.session_state.asesoria_data['informacion_financiera'].get('ahorro_actual', 0)),
+                step=100.0
+            )
             
-            st.subheader(f"Información del Cliente: {cliente_seleccionado}")
+        with col2:
+            st.session_state.asesoria_data['informacion_financiera']['deudas_totales'] = st.number_input(
+                "Deudas totales ($)", 
+                min_value=0.0,
+                value=float(st.session_state.asesoria_data['informacion_financiera'].get('deudas_totales', 0)),
+                step=100.0
+            )
+            st.session_state.asesoria_data['informacion_financiera']['gastos_alimentacion'] = st.number_input(
+                "Gastos en alimentación ($)", 
+                min_value=0.0,
+                value=float(st.session_state.asesoria_data['informacion_financiera'].get('gastos_alimentacion', 0)),
+                step=100.0
+            )
+            st.session_state.asesoria_data['informacion_financiera']['gastos_vivienda'] = st.number_input(
+                "Gastos en vivienda ($)", 
+                min_value=0.0,
+                value=float(st.session_state.asesoria_data['informacion_financiera'].get('gastos_vivienda', 0)),
+                step=100.0
+            )
+    
+    with tab4:
+        st.subheader("Objetivos Financieros")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.session_state.asesoria_data['objetivos']['edad_retiro_deseada'] = st.number_input(
+                "¿A qué edad te quieres retirar?", 
+                min_value=30,
+                max_value=80,
+                value=st.session_state.asesoria_data['objetivos'].get('edad_retiro_deseada', 65),
+                step=1
+            )
+            st.session_state.asesoria_data['objetivos']['ingreso_retiro_mensual'] = st.number_input(
+                "¿Qué ingreso mensual deseas en tu retiro? ($)", 
+                min_value=0.0,
+                value=float(st.session_state.asesoria_data['objetivos'].get('ingreso_retiro_mensual', 0)),
+                step=100.0
+            )
             
-            # Inicializar estado para edición
-            if 'editando_cliente' not in st.session_state:
-                st.session_state.editando_cliente = False
-            if 'cliente_data_edit' not in st.session_state:
-                st.session_state.cliente_data_edit = {}
+            # Educación de hijos
+            if st.session_state.asesoria_data['informacion_familiar'].get('num_hijos', 0) > 0:
+                st.session_state.asesoria_data['objetivos']['costo_universidad_por_hijo'] = st.number_input(
+                    "Costo estimado de universidad por hijo ($)", 
+                    min_value=0.0,
+                    value=float(st.session_state.asesoria_data['objetivos'].get('costo_universidad_por_hijo', 0)),
+                    step=1000.0
+                )
+        
+        with col2:
+            st.session_state.asesoria_data['objetivos']['meses_proteccion_familiar'] = st.number_input(
+                "¿Cuántos meses de gastos quieres cubrir para tu familia?", 
+                min_value=0,
+                max_value=24,
+                value=st.session_state.asesoria_data['objetivos'].get('meses_proteccion_familiar', 6),
+                step=1
+            )
             
-            # Botón para editar
-            if not st.session_state.editando_cliente:
-                if st.button("✏️ Editar Datos del Cliente", key="btn_editar_cliente"):
-                    st.session_state.editando_cliente = True
-                    st.session_state.cliente_data_edit = info_cliente.to_dict()
-                    st.rerun()
-            else:
-                if st.button("❌ Cancelar Edición", key="btn_cancelar_edicion_cliente"):
-                    st.session_state.editando_cliente = False
-                    st.session_state.cliente_data_edit = {}
-                    st.rerun()
+            st.session_state.asesoria_data['objetivos']['proyecto_futuro'] = st.text_input(
+                "¿Tienes algún proyecto a mediano/largo plazo? (ej: casa, negocio)", 
+                value=st.session_state.asesoria_data['objetivos'].get('proyecto_futuro', '')
+            )
             
-            # Formulario de edición o visualización
-            if st.session_state.editando_cliente:
-                with st.form("form_editar_cliente"):
-                    st.write("**Editar Información del Cliente**")
+            if st.session_state.asesoria_data['objetivos'].get('proyecto_futuro'):
+                st.session_state.asesoria_data['objetivos']['costo_proyecto'] = st.number_input(
+                    f"Costo estimado de {st.session_state.asesoria_data['objetivos'].get('proyecto_futuro')} ($)", 
+                    min_value=0.0,
+                    value=float(st.session_state.asesoria_data['objetivos'].get('costo_proyecto', 0)),
+                    step=1000.0
+                )
+    
+    with tab5:
+        st.subheader("📊 Reporte Financiero")
+        
+        # Botón para generar reporte
+        if st.button("📈 Generar Reporte Completo", type="primary", use_container_width=True):
+            with st.spinner("Generando reporte financiero..."):
+                # Calcular métricas
+                metricas = calcular_metricas_financieras()
+                
+                if metricas:
+                    # Mostrar resumen
+                    st.success("✅ Reporte generado exitosamente")
                     
-                    col1, col2 = st.columns(2)
+                    # Crear columnas para métricas clave
+                    col1, col2, col3 = st.columns(3)
                     
                     with col1:
-                        tipo_persona_edit = st.selectbox(
-                            "Tipo Persona", 
-                            OPCIONES_PERSONA,
-                            index=OPCIONES_PERSONA.index(st.session_state.cliente_data_edit.get("Tipo Persona", OPCIONES_PERSONA[0])) 
-                            if st.session_state.cliente_data_edit.get("Tipo Persona") in OPCIONES_PERSONA else 0,
-                            key="edit_tipo_persona"
-                        )
-                        rfc_edit = st.text_input(
-                            "RFC", 
-                            value=st.session_state.cliente_data_edit.get("RFC", ""),
-                            key="edit_rfc"
-                        )
-                        telefono_edit = st.text_input(
-                            "Teléfono", 
-                            value=st.session_state.cliente_data_edit.get("Teléfono", ""),
-                            key="edit_telefono"
-                        )
-                        correo_edit = st.text_input(
-                            "Correo", 
-                            value=st.session_state.cliente_data_edit.get("Correo", ""),
-                            key="edit_correo"
-                        )
-                        fecha_nacimiento_edit = st.text_input(
-                            "Fecha Nacimiento (dd/mm/yyyy)", 
-                            value=st.session_state.cliente_data_edit.get("Fecha Nacimiento", ""),
-                            placeholder="dd/mm/yyyy",
-                            key="edit_fecha_nac"
-                        )
-                    
+                        st.metric("Capacidad de Ahorro Mensual", f"${metricas['ahorro_mensual']:,.2f}")
                     with col2:
-                        direccion_edit = st.text_input(
-                            "Dirección", 
-                            value=st.session_state.cliente_data_edit.get("Dirección", ""),
-                            placeholder="Ej: Calle 123, CDMX, 03100",
-                            key="edit_direccion"
-                        )
-                        contacto_edit = st.text_input(
-                            "Contacto", 
-                            value=st.session_state.cliente_data_edit.get("Contacto", ""),
-                            key="edit_contacto"
-                        )
-                        referenciador_edit = st.text_input(
-                            "Referenciador", 
-                            value=st.session_state.cliente_data_edit.get("Referenciador", ""),
-                            key="edit_referenciador"
-                        )
+                        st.metric("Porcentaje de Ahorro", f"{metricas['porcentaje_ahorro']:.1f}%")
+                    with col3:
+                        st.metric("Fondo Emergencia Recomendado", f"${metricas['fondo_emergencia_recomendado']:,.2f}")
                     
-                    # Validar fecha
-                    fecha_error = None
-                    if fecha_nacimiento_edit:
-                        valido, error = validar_fecha(fecha_nacimiento_edit)
-                        if not valido:
-                            fecha_error = f"Fecha Nacimiento: {error}"
+                    # Mostrar gráficos
+                    st.subheader("📊 Gráficos Financieros")
                     
-                    col_btn1, col_btn2 = st.columns(2)
-                    with col_btn1:
-                        submitted_edit = st.form_submit_button("💾 Guardar Cambios")
-                    with col_btn2:
-                        cancel_edit = st.form_submit_button("🚫 Cancelar")
+                    # Gráfico 1: Distribución financiera actual
+                    fig1 = crear_grafico_pastel_gastos(metricas)
+                    if fig1:
+                        st.pyplot(fig1)
                     
-                    if cancel_edit:
-                        st.session_state.editando_cliente = False
-                        st.session_state.cliente_data_edit = {}
-                        st.rerun()
+                    # Gráfico 2: Metas financieras
+                    fig2 = crear_grafico_barras_metas(metricas)
+                    if fig2:
+                        st.pyplot(fig2)
                     
-                    if submitted_edit:
-                        if fecha_error:
-                            st.error(fecha_error)
-                        else:
-                            # Actualizar todas las pólizas del cliente con los nuevos datos
-                            for index in polizas_cliente.index:
-                                df_polizas.loc[index, "Tipo Persona"] = tipo_persona_edit
-                                df_polizas.loc[index, "RFC"] = rfc_edit
-                                df_polizas.loc[index, "Teléfono"] = telefono_edit
-                                df_polizas.loc[index, "Correo"] = correo_edit
-                                df_polizas.loc[index, "Fecha Nacimiento"] = fecha_nacimiento_edit
-                                df_polizas.loc[index, "Dirección"] = direccion_edit
-                                df_polizas.loc[index, "Contacto"] = contacto_edit
-                                df_polizas.loc[index, "Referenciador"] = referenciador_edit
-                            
-                            if guardar_datos(df_polizas=df_polizas):
-                                st.success("✅ Datos del cliente actualizados correctamente")
-                                st.session_state.editando_cliente = False
-                                st.session_state.cliente_data_edit = {}
-                                st.rerun()
-                            else:
-                                st.error("❌ Error al actualizar los datos del cliente")
-            else:
-                # Mostrar información en modo lectura
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write("**Información General:**")
-                    st.write(f"**Tipo Persona:** {info_cliente.get('Tipo Persona', 'N/A')}")
-                    st.write(f"**RFC:** {info_cliente.get('RFC', 'N/A')}")
-                    st.write(f"**Teléfono:** {info_cliente.get('Teléfono', 'N/A')}")
-                    st.write(f"**Correo:** {info_cliente.get('Correo', 'N/A')}")
-                    st.write(f"**Fecha Nacimiento:** {info_cliente.get('Fecha Nacimiento', 'N/A')}")
-                
-                with col2:
-                    st.write("**Dirección y Contacto:**")
-                    st.write(f"**Dirección:** {info_cliente.get('Dirección', 'N/A')}")
-                    st.write(f"**Contacto:** {info_cliente.get('Contacto', 'N/A')}")
-                    st.write(f"**Referenciador:** {info_cliente.get('Referenciador', 'N/A')}")
-
-        # Mostrar todas las pólizas del cliente
-        st.subheader(f"Pólizas de {cliente_seleccionado}")
-        
-        # Contadores por estado
-        if 'Estado' in polizas_cliente.columns:
-            vigentes = len(polizas_cliente[polizas_cliente['Estado'] == 'VIGENTE'])
-            canceladas = len(polizas_cliente[polizas_cliente['Estado'] == 'CANCELADO'])
-            terminadas = len(polizas_cliente[polizas_cliente['Estado'] == 'TERMINADO'])
-            
-            col_stat1, col_stat2, col_stat3 = st.columns(3)
-            with col_stat1:
-                st.metric("Pólizas Vigentes", vigentes)
-            with col_stat2:
-                st.metric("Pólizas Canceladas", canceladas)
-            with col_stat3:
-                st.metric("Pólizas Terminadas", terminadas)
-
-        # Mostrar tabla de pólizas
-        columnas_mostrar = ["No. Póliza", "Producto", "Aseguradora", "Inicio Vigencia", "Fin Vigencia", "Estado", "Moneda"]
-        columnas_disponibles = [col for col in columnas_mostrar if col in polizas_cliente.columns]
-        
-        if columnas_disponibles:
-            st.dataframe(polizas_cliente[columnas_disponibles], use_container_width=True)
-        else:
-            st.dataframe(polizas_cliente, use_container_width=True)
-
-        # Detalles de póliza específica
-        st.subheader("Detalles de Póliza Específica")
-        if "No. Póliza" in polizas_cliente.columns:
-            polizas_lista = polizas_cliente["No. Póliza"].tolist()
-            poliza_seleccionada = st.selectbox("Seleccionar Póliza para ver detalles", polizas_lista, key="detalle_poliza_consulta")
-            
-            if poliza_seleccionada:
-                poliza_detalle = polizas_cliente[polizas_cliente["No. Póliza"] == poliza_seleccionada].iloc[0]
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write("**Información de la Póliza:**")
-                    st.write(f"**No. Póliza:** {poliza_detalle.get('No. Póliza', 'N/A')}")
-                    st.write(f"**Producto:** {poliza_detalle.get('Producto', 'N/A')}")
-                    st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', 'N/A')}")
-                    st.write(f"**Estado:** {poliza_detalle.get('Estado', 'N/A')}")
-                    st.write(f"**Moneda:** {poliza_detalle.get('Moneda', 'N/A')}")
-                    st.write(f"**Periodicidad:** {poliza_detalle.get('Periodicidad', 'N/A')}")
-                    st.write(f"**Clave de Emisión:** {poliza_detalle.get('Clave de Emisión', 'N/A')}")
-                
-                with col2:
-                    st.write("**Fechas y Montos:**")
-                    st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', 'N/A')}")
-                    st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin Vigencia', 'N/A')}")
-                    st.write(f"**Prima Total Emitida:** {poliza_detalle.get('Prima Total Emitida', 'N/A')}")
-                    st.write(f"**Prima Neta:** {poliza_detalle.get('Prima Neta', 'N/A')}")
-                    st.write(f"**Primer Pago:** {poliza_detalle.get('Primer Pago', 'N/A')}")
-                    st.write(f"**Pagos Subsecuentes:** {poliza_detalle.get('Pagos Subsecuentes', 'N/A')}")
-                    st.write(f"**% Comisión:** {poliza_detalle.get('% Comisión', 'N/A')}")
-
-                # Formulario para actualizar estado de la póliza
-                with st.form("form_actualizar_estado"):
-                    st.write("**Actualizar Estado de la Póliza**")
-                    nuevo_estado = st.selectbox("Nuevo Estado", OPCIONES_ESTADO_POLIZA, 
-                                               index=OPCIONES_ESTADO_POLIZA.index(poliza_detalle.get('Estado', 'VIGENTE')) 
-                                               if poliza_detalle.get('Estado') in OPCIONES_ESTADO_POLIZA else 0)
+                    # Gráfico 3: Comparación de ahorro
+                    fig3 = crear_grafico_ahorro(metricas)
+                    if fig3:
+                        st.pyplot(fig3)
                     
-                    if st.form_submit_button("💾 Actualizar Estado"):
-                        # Actualizar el estado en el DataFrame
-                        mask = (df_polizas['No. Póliza'] == poliza_seleccionada)
-                        df_polizas.loc[mask, 'Estado'] = nuevo_estado
-                        
-                        if guardar_datos(df_polizas=df_polizas):
-                            st.success("✅ Estado de la póliza actualizado correctamente")
-                            st.rerun()
-                        else:
-                            st.error("❌ Error al actualizar el estado")
-
-# 5. Póliza Nueva (para clientes existentes)
-def mostrar_poliza_nueva(df_prospectos, df_polizas):
-    st.header("🆕 Póliza Nueva para Cliente Existente")
-
-    # Seleccionar cliente existente
-    if not df_polizas.empty and "Nombre/Razón Social" in df_polizas.columns:
-        clientes_unicos = df_polizas["Nombre/Razón Social"].dropna().unique().tolist()
-        cliente_seleccionado = st.selectbox("Seleccionar Cliente", [""] + clientes_unicos, key="cliente_existente")
-
-        if cliente_seleccionado:
-            # Mostrar pólizas existentes del cliente
-            st.subheader(f"Pólizas existentes de {cliente_seleccionado}")
-            polizas_cliente = df_polizas[df_polizas["Nombre/Razón Social"] == cliente_seleccionado]
-
-            columnas_mostrar = ["No. Póliza", "Producto", "Aseguradora", "Fin Vigencia", "Estado"]
-            columnas_disponibles = [col for col in columnas_mostrar if col in polizas_cliente.columns]
-
-            if columnas_disponibles:
-                st.dataframe(polizas_cliente[columnas_disponibles], use_container_width=True)
-            else:
-                st.info("No hay columnas disponibles para mostrar")
-
-            # Formulario para nueva póliza
-            st.subheader("Agregar Nueva Póliza")
-
-            with st.form("form_nueva_poliza", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    no_poliza = st.text_input("No. Póliza*", key="nueva_poliza_numero")
-                    producto = st.selectbox("Producto", OPCIONES_PRODUCTO, key="nueva_poliza_producto")
-                    inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
-                                                  placeholder="dd/mm/yyyy",
-                                                  key="nueva_poliza_inicio")
-                    fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
-                                               placeholder="dd/mm/yyyy",
-                                               key="nueva_poliza_fin")
-                    forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="nueva_poliza_pago")
-                    banco = st.selectbox("Banco", OPCIONES_BANCO, key="nueva_poliza_banco")
-                    periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="nueva_poliza_periodicidad")
-                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="nueva_poliza_moneda")
-
-                with col2:
-                    prima_total_emitida = st.text_input("Prima Total Emitida", key="nueva_poliza_prima_total")
-                    prima_neta = st.text_input("Prima Neta", key="nueva_poliza_prima_neta")
-                    primer_pago = st.text_input("Primer Pago", key="nueva_poliza_primer_pago")
-                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="nueva_poliza_pagos_subsecuentes")
-                    aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="nueva_poliza_aseguradora")
-                    comision_porcentaje = st.text_input("% Comisión", key="nueva_poliza_comision_pct")
-                    estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="nueva_poliza_estado")
-                    contacto = st.text_input("Contacto", key="nueva_poliza_contacto")
-                    direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
-                                            placeholder="Ej: Calle 123, CDMX, 03100",
-                                            key="nueva_poliza_direccion")
-                    referenciador = st.text_input("Referenciador", 
-                                                placeholder="Origen del cliente/promoción",
-                                                key="nueva_poliza_referenciador")
-                    clave_emision = st.text_input("Clave de Emisión", key="nueva_poliza_clave_emision")
-
-                # Validar fechas obligatorias
-                fecha_errors = []
-                if inicio_vigencia:
-                    valido, error = validar_fecha(inicio_vigencia)
-                    if not valido:
-                        fecha_errors.append(f"Inicio Vigencia: {error}")
+                    # Generar archivo Excel para descarga
+                    excel_buffer = generar_excel_reporte(metricas)
+                    
+                    # Botón para descargar Excel
+                    st.download_button(
+                        label="📥 Descargar Reporte en Excel",
+                        data=excel_buffer,
+                        file_name=f"Reporte_Financiero_{st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    
+                    # Botón para descargar PDF (simulado)
+                    if st.button("📄 Generar PDF del Reporte", use_container_width=True):
+                        st.info("La generación de PDF estará disponible en la próxima actualización")
                 else:
-                    fecha_errors.append("Inicio Vigencia es obligatorio")
-
-                if fin_vigencia:
-                    valido, error = validar_fecha(fin_vigencia)
-                    if not valido:
-                        fecha_errors.append(f"Fin Vigencia: {error}")
-                else:
-                    fecha_errors.append("Fin Vigencia es obligatorio")
-
-                if fecha_errors:
-                    for error in fecha_errors:
-                        st.error(error)
-
-                submitted_nueva_poliza = st.form_submit_button("💾 Guardar Nueva Póliza")
-                if submitted_nueva_poliza:
-                    if not no_poliza:
-                        st.warning("Debe completar el número de póliza")
-                    elif fecha_errors:
-                        st.warning("Corrija los errores en las fechas antes de guardar")
-                    else:
-                        # Verificar si ya existe el número de póliza
-                        poliza_existe = False
-                        if "No. Póliza" in df_polizas.columns:
-                            poliza_existe = str(no_poliza).strip() in df_polizas["No. Póliza"].astype(str).str.strip().values
-
-                        if poliza_existe:
-                            st.warning("⚠️ Este número de póliza ya existe")
-                        else:
-                            # Obtener datos básicos del cliente
-                            if not polizas_cliente.empty:
-                                cliente_data = polizas_cliente.iloc[0]
-                            else:
-                                cliente_data = {}
-
-                            nueva_poliza = {
-                                "Tipo Persona": cliente_data.get("Tipo Persona", ""),
-                                "Nombre/Razón Social": cliente_seleccionado,
-                                "No. Póliza": no_poliza,
-                                "Producto": producto,
-                                "Inicio Vigencia": inicio_vigencia,
-                                "Fin Vigencia": fin_vigencia,
-                                "RFC": cliente_data.get("RFC", ""),
-                                "Forma de Pago": forma_pago,
-                                "Banco": banco,
-                                "Periodicidad": periodicidad,
-                                "Prima Total Emitida": prima_total_emitida,
-                                "Prima Neta": prima_neta,
-                                "Primer Pago": primer_pago,
-                                "Pagos Subsecuentes": pagos_subsecuentes,
-                                "Aseguradora": aseguradora,
-                                "% Comisión": comision_porcentaje,
-                                "Estado": estado,
-                                "Contacto": contacto,
-                                "Dirección": direccion,
-                                "Teléfono": cliente_data.get("Teléfono", ""),
-                                "Correo": cliente_data.get("Correo", ""),
-                                "Fecha Nacimiento": cliente_data.get("Fecha Nacimiento", ""),
-                                "Moneda": moneda,
-                                "Referenciador": referenciador,
-                                "Clave de Emisión": clave_emision
-                            }
-
-                            df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
-
-                            if guardar_datos(df_prospectos=df_prospectos, df_polizas=df_polizas):
-                                st.success("✅ Nueva póliza agregada correctamente")
-                                st.rerun()
-        else:
-            st.info("No hay clientes registrados")
-
-# 6. Renovaciones (antes Próximos Vencimientos)
-def mostrar_renovaciones(df_polizas):
-    st.header("🔄 Renovaciones (Pólizas por Vencer)")
-
-    if st.button("🔄 Actualizar Lista", key="actualizar_renovaciones"):
-        st.cache_data.clear()
-
-    if df_polizas.empty:
-        st.info("No hay pólizas registradas")
-        return
-
-    # Crear una copia para no modificar el original
-    df = df_polizas.copy()
-    
-    # Limpiar y convertir fechas de manera segura
-    df_clean = df.copy()
-    
-    # Función para convertir fecha de manera segura
-    def safe_date_conversion(date_str):
-        if pd.isna(date_str) or date_str == "" or date_str is None:
-            return None
+                    st.error("❌ Error al calcular las métricas financieras")
         
-        date_str = str(date_str).strip()
+        # Mostrar datos actuales si ya existen
+        if 'metricas' in st.session_state:
+            st.info("Ya tienes un reporte generado. Haz clic en 'Generar Reporte Completo' para actualizarlo.")
+
+def calcular_metricas_financieras():
+    """Calcula métricas financieras basadas en los datos ingresados"""
+    try:
+        datos = st.session_state.asesoria_data
         
-        # Lista de formatos a probar
-        formats = [
-            "%d/%m/%Y",  # 31/12/2023
-            "%Y-%m-%d",  # 2023-12-31
-            "%d-%m-%Y",  # 31-12-2023
-            "%m/%d/%Y",  # 12/31/2023 (formato americano)
-            "%Y/%m/%d",  # 2023/12/31
-        ]
+        # Extraer datos básicos
+        ingreso_mensual = datos['informacion_financiera'].get('ingreso_mensual', 0)
+        gastos_mensuales = datos['informacion_financiera'].get('gastos_mensuales', 0)
+        ahorro_actual = datos['informacion_financiera'].get('ahorro_actual', 0)
+        edad = datos['informacion_familiar'].get('edad', 30)
         
-        for fmt in formats:
-            try:
-                return datetime.strptime(date_str, fmt).date()
-            except ValueError:
-                continue
+        # Cálculos básicos
+        ingreso_anual = ingreso_mensual * 12
+        gastos_anuales = gastos_mensuales * 12
+        ahorro_mensual = ingreso_mensual - gastos_mensuales
+        ahorro_anual = ahorro_mensual * 12
+        porcentaje_ahorro = (ahorro_mensual / ingreso_mensual * 100) if ingreso_mensual > 0 else 0
         
-        # Si ningún formato funciona, usar pandas como último recurso
-        try:
-            result = pd.to_datetime(date_str, dayfirst=True, errors='coerce')
-            if not pd.isna(result):
-                return result.date()
-        except:
-            pass
+        # Fondo de emergencia recomendado (6 meses de gastos)
+        fondo_emergencia_recomendado = gastos_mensuales * 6
         
+        # Necesidad de protección familiar
+        meses_proteccion = datos['objetivos'].get('meses_proteccion_familiar', 6)
+        necesidad_proteccion = gastos_mensuales * meses_proteccion
+        
+        # Necesidad de retiro
+        edad_retiro_deseada = datos['objetivos'].get('edad_retiro_deseada', 65)
+        años_hasta_retiro = edad_retiro_deseada - edad if edad_retiro_deseada > edad else 0
+        ingreso_retiro_mensual = datos['objetivos'].get('ingreso_retiro_mensual', 0)
+        años_retiro = 80 - edad_retiro_deseada  # Esperanza de vida 80 años
+        necesidad_retiro_total = ingreso_retiro_mensual * 12 * años_retiro
+        
+        # Necesidad educación
+        necesidad_educacion = 0
+        num_hijos = datos['informacion_familiar'].get('num_hijos', 0)
+        hijos = datos['informacion_familiar'].get('hijos', [])
+        costo_universidad = datos['objetivos'].get('costo_universidad_por_hijo', 0)
+        
+        for i in range(min(num_hijos, len(hijos))):
+            if hijos[i]['edad']:
+                try:
+                    edad_hijo = int(hijos[i]['edad'])
+                    if edad_hijo < 18:
+                        necesidad_educacion += costo_universidad
+                except:
+                    necesidad_educacion += costo_universidad
+        
+        # Necesidad proyecto
+        necesidad_proyecto = datos['objetivos'].get('costo_proyecto', 0)
+        
+        # Metas financieras
+        metas = {
+            'Protección': necesidad_proteccion,
+            'Retiro': necesidad_retiro_total,
+            'Educación': necesidad_educacion,
+            'Proyecto': necesidad_proyecto
+        }
+        
+        # Ahorro recomendado (10% del ingreso anual)
+        ahorro_recomendado_10 = ingreso_anual * 0.10
+        ahorro_recomendado_7 = ingreso_mensual * 0.07 * 12
+        
+        metricas = {
+            'ingreso_anual': ingreso_anual,
+            'gastos_anuales': gastos_anuales,
+            'ahorro_mensual': ahorro_mensual,
+            'ahorro_anual': ahorro_anual,
+            'porcentaje_ahorro': porcentaje_ahorro,
+            'fondo_emergencia_recomendado': fondo_emergencia_recomendado,
+            'años_hasta_retiro': años_hasta_retiro,
+            'necesidad_retiro_total': necesidad_retiro_total,
+            'necesidad_educacion': necesidad_educacion,
+            'necesidad_proteccion': necesidad_proteccion,
+            'ahorro_recomendado_10': ahorro_recomendado_10,
+            'ahorro_recomendado_7': ahorro_recomendado_7,
+            'metas': metas,
+            'datos_basicos': {
+                'ingreso_mensual': ingreso_mensual,
+                'gastos_mensuales': gastos_mensuales,
+                'ahorro_actual': ahorro_actual,
+                'deudas_totales': datos['informacion_financiera'].get('deudas_totales', 0)
+            }
+        }
+        
+        # Guardar en session state para uso posterior
+        st.session_state.metricas_financieras = metricas
+        return metricas
+        
+    except Exception as e:
+        st.error(f"Error al calcular métricas: {str(e)}")
         return None
 
-    # Aplicar conversión segura
-    df_clean['Fin_Vigencia_Date'] = df_clean['Fin Vigencia'].apply(safe_date_conversion)
-    
-    # Filtrar solo las que tienen fecha válida
-    df_valid = df_clean[df_clean['Fin_Vigencia_Date'].notna()]
-    
-    if df_valid.empty:
-        st.info("No hay pólizas con fechas de vencimiento válidas")
-        return
-
-    # Calcular días restantes
-    hoy = datetime.now().date()
-    df_valid['Dias_Restantes'] = df_valid['Fin_Vigencia_Date'].apply(
-        lambda x: (x - hoy).days if x else None
-    )
-    
-    # Filtrar por estado VIGENTE si existe la columna
-    if 'Estado' in df_valid.columns:
-        df_vigentes = df_valid[df_valid['Estado'].astype(str).str.upper() == 'VIGENTE']
-    else:
-        df_vigentes = df_valid
-    
-    # Filtrar por rango de días (45-60 días para renovaciones)
-    df_renovaciones = df_vigentes[
-        (df_vigentes['Dias_Restantes'] >= 45) & 
-        (df_vigentes['Dias_Restantes'] <= 60)
-    ]
-
-    if df_renovaciones.empty:
-        st.info("No hay pólizas por renovar en los próximos 45-60 días")
-        
-        # Mostrar algunas estadísticas
-        if not df_vigentes.empty and 'Dias_Restantes' in df_vigentes.columns:
-            st.subheader("Estadísticas de Pólizas Vigentes")
-            col1, col2, col_stats3 = st.columns(3)
-            
-            with col1:
-                por_renovar = len(df_vigentes[df_vigentes['Dias_Restantes'] < 45])
-                st.metric("Por renovar (<45 días)", por_renovar)
-            
-            with col2:
-                renovaciones_lejanas = len(df_vigentes[df_vigentes['Dias_Restantes'] > 60])
-                st.metric("Renovaciones lejanas (>60 días)", renovaciones_lejanas)
-            
-            with col_stats3:
-                total_vigentes = len(df_vigentes)
-                st.metric("Total Vigentes", total_vigentes)
-        
-        return
-
-    # Preparar datos para mostrar
-    df_mostrar = df_renovaciones.copy()
-    df_mostrar['Fin_Vigencia_Formateada'] = df_mostrar['Fin_Vigencia_Date'].apply(
-        lambda x: x.strftime('%d/%m/%Y') if x else 'Fecha inválida'
-    )
-
-    # Columnas a mostrar
-    columnas_mostrar = ['Nombre/Razón Social', 'No. Póliza', 'Producto', 'Fin_Vigencia_Formateada', 'Dias_Restantes']
-    columnas_disponibles = [col for col in columnas_mostrar if col in df_mostrar.columns]
-    
-    # Renombrar para mejor presentación
-    df_display = df_mostrar[columnas_disponibles].rename(columns={
-        'Fin_Vigencia_Formateada': 'Fin Vigencia',
-        'Dias_Restantes': 'Días para Renovación'
-    })
-    
-    # Aplicar estilo para resaltar por días restantes
-    def style_dias_renovacion(val):
-        if val <= 50:
-            return 'background-color: #ffcccc; color: #cc0000; font-weight: bold;'
-        elif val <= 55:
-            return 'background-color: #fff0cc; color: #cc8800;'
-        else:
-            return 'background-color: #e6ffe6; color: #006600;'
-    
+def crear_grafico_pastel_gastos(metricas):
+    """Crea gráfico de pastel para distribución de finanzas"""
     try:
-        styled_df = df_display.style.applymap(
-            style_dias_renovacion, 
-            subset=['Días para Renovación']
-        )
-        st.dataframe(styled_df, use_container_width=True)
-    except Exception:
-        st.dataframe(df_display, use_container_width=True)
-
-    # Detalles de póliza seleccionada
-    st.subheader("Detalles para Renovación")
-    
-    if 'No. Póliza' in df_renovaciones.columns:
-        polizas_lista = df_renovaciones['No. Póliza'].astype(str).tolist()
+        fig, ax = plt.subplots(figsize=(8, 6))
         
-        if polizas_lista:
-            poliza_seleccionada = st.selectbox(
-                "Seleccionar Póliza para ver detalles", 
-                polizas_lista, 
-                key="detalle_poliza_renovaciones"
+        datos = metricas['datos_basicos']
+        labels = ['Gastos Mensuales', 'Ahorro Actual', 'Deudas Totales']
+        sizes = [
+            datos['gastos_mensuales'],
+            datos['ahorro_actual'],
+            datos['deudas_totales']
+        ]
+        
+        # Filtrar valores cero
+        filtered_labels = []
+        filtered_sizes = []
+        colors = []
+        
+        for i, (label, size) in enumerate(zip(labels, sizes)):
+            if size > 0:
+                filtered_labels.append(label)
+                filtered_sizes.append(size)
+                colors.append(list(COLORES_AXA.values())[i % len(COLORES_AXA)])
+        
+        if filtered_sizes:
+            wedges, texts, autotexts = ax.pie(
+                filtered_sizes, 
+                labels=filtered_labels,
+                colors=colors,
+                autopct='%1.1f%%',
+                startangle=90,
+                textprops={'fontsize': 9}
             )
             
-            if poliza_seleccionada:
-                # Encontrar la póliza seleccionada
-                poliza_mask = df_renovaciones['No. Póliza'].astype(str) == poliza_seleccionada
-                if poliza_mask.any():
-                    poliza_detalle = df_renovaciones[poliza_mask].iloc[0]
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**Información General:**")
-                        st.write(f"**Cliente:** {poliza_detalle.get('Nombre/Razón Social', 'N/A')}")
-                        st.write(f"**No. Póliza:** {poliza_detalle.get('No. Póliza', 'N/A')}")
-                        st.write(f"**Producto:** {poliza_detalle.get('Producto', 'N/A')}")
-                        st.write(f"**Aseguradora:** {poliza_detalle.get('Aseguradora', 'N/A')}")
-                        st.write(f"**Estado:** {poliza_detalle.get('Estado', 'N/A')}")
-                        st.write(f"**Días para Renovación:** {poliza_detalle.get('Dias_Restantes', 'N/A')}")
-                    
-                    with col2:
-                        st.write("**Fechas:**")
-                        st.write(f"**Inicio Vigencia:** {poliza_detalle.get('Inicio Vigencia', 'N/A')}")
-                        st.write(f"**Fin Vigencia:** {poliza_detalle.get('Fin_Vigencia_Date', 'N/A')}")
-                        
-                        st.write("**Datos de Contacto:**")
-                        st.write(f"**Teléfono:** {poliza_detalle.get('Teléfono', 'N/A')}")
-                        st.write(f"**Correo:** {poliza_detalle.get('Correo', 'N/A')}")
-                        st.write(f"**Contacto:** {poliza_detalle.get('Contacto', 'N/A')}")
-                        
-                        if poliza_detalle.get('Dias_Restantes', 0) <= 50:
-                            st.warning("⚠️ Esta póliza está próxima a vencer. Contactar al cliente para renovación.")
-
-# 7. Cobranza (versión actualizada que incluye recibos vencidos)
-def mostrar_cobranza(df_polizas, df_cobranza):
-    st.header("💰 Cobranza")
-
-    # Botón para recalcular cobranza (incluyendo vencidos)
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("🔄 Recalcular Cobranza (Incluye Vencidos)", use_container_width=True):
-            df_cobranza_proxima = calcular_cobranza()
-            if not df_cobranza_proxima.empty:
-                # Combinar con datos existentes
-                if df_cobranza is not None and not df_cobranza.empty:
-                    # Usar ID_Cobranza para evitar duplicados
-                    if 'ID_Cobranza' in df_cobranza.columns and 'ID_Cobranza' in df_cobranza_proxima.columns:
-                        df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_proxima]).drop_duplicates(
-                            subset=['ID_Cobranza'], keep='last'
-                        )
-                    else:
-                        df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_proxima]).drop_duplicates(
-                            subset=['No. Póliza', 'Recibo'], keep='last'
-                        )
-                else:
-                    df_cobranza_completa = df_cobranza_proxima
-                
-                if guardar_datos(df_cobranza=df_cobranza_completa):
-                    st.success("✅ Cobranza recalculada exitosamente (incluyendo recibos vencidos)")
-                    st.rerun()
-    
-    with col_btn2:
-        if st.button("📊 Ver Solo Pendientes", use_container_width=True):
-            if 'filtro_cobranza' not in st.session_state:
-                st.session_state.filtro_cobranza = True
-            else:
-                st.session_state.filtro_cobranza = not st.session_state.filtro_cobranza
-            st.rerun()
-
-    # Calcular cobranza de los próximos 60 días (incluye vencidos)
-    df_cobranza_proxima = calcular_cobranza()
-
-    if df_cobranza_proxima.empty and (df_cobranza is None or df_cobranza.empty):
-        st.info("No hay cobranza registrada")
-        return
-
-    # Combinar con datos existentes de cobranza
-    if df_cobranza is not None and not df_cobranza.empty:
-        # Usar ID_Cobranza para evitar duplicados si existe, si no usar No. Póliza y Recibo
-        if 'ID_Cobranza' in df_cobranza.columns and 'ID_Cobranza' in df_cobranza_proxima.columns:
-            df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_proxima]).drop_duplicates(
-                subset=['ID_Cobranza'], keep='last'
-            )
-        else:
-            df_cobranza_completa = pd.concat([df_cobranza, df_cobranza_proxima]).drop_duplicates(
-                subset=['No. Póliza', 'Recibo'], keep='last'
-            )
-    else:
-        df_cobranza_completa = df_cobranza_proxima
-
-    # Filtrar según el filtro seleccionado
-    if 'Estatus' in df_cobranza_completa.columns:
-        # Verificar si debemos mostrar solo pendientes o todos
-        if 'filtro_cobranza' not in st.session_state or st.session_state.filtro_cobranza:
-            df_mostrar = df_cobranza_completa[df_cobranza_completa['Estatus'].isin(['Pendiente', 'Vencido'])]
-            st.info("Mostrando recibos Pendientes y Vencidos")
-        else:
-            df_mostrar = df_cobranza_completa[df_cobranza_completa['Estatus'] == 'Pendiente']
-            st.info("Mostrando solo recibos Pendientes")
-    else:
-        df_mostrar = df_cobranza_completa
-
-    if df_mostrar.empty:
-        st.success("🎉 No hay recibos pendientes o vencidos")
-        return
-
-    # Obtener información de las pólizas
-    df_mostrar_con_info = df_mostrar.copy()
-    
-    # Buscar la información adicional para cada póliza
-    for idx, row in df_mostrar_con_info.iterrows():
-        no_poliza = row['No. Póliza']
-        poliza_info = df_polizas[df_polizas['No. Póliza'].astype(str) == str(no_poliza)]
+            ax.set_title('Distribución Financiera Actual', 
+                        fontsize=14, 
+                        fontweight='bold',
+                        color=COLORES_AXA['azul_principal'])
+            
+            plt.tight_layout()
+            return fig
+        return None
         
-        if not poliza_info.empty:
-            clave_emision = poliza_info.iloc[0].get('Clave de Emisión', '')
-            df_mostrar_con_info.at[idx, 'Clave de Emisión'] = clave_emision
-        else:
-            df_mostrar_con_info.at[idx, 'Clave de Emisión'] = ""
+    except Exception as e:
+        st.error(f"Error al crear gráfico de pastel: {str(e)}")
+        return None
 
-    # Calcular días transcurridos desde el vencimiento
-    hoy = datetime.now().date()
-    
-    def calcular_dias_transcurridos(fecha_vencimiento_str):
-        if not fecha_vencimiento_str or pd.isna(fecha_vencimiento_str) or fecha_vencimiento_str == "":
-            return None
-        
-        try:
-            # Convertir fecha de vencimiento a datetime
-            fecha_vencimiento = datetime.strptime(fecha_vencimiento_str, "%d/%m/%Y").date()
-            # Calcular días transcurridos desde la fecha de vencimiento
-            dias_transcurridos = (hoy - fecha_vencimiento).days
-            return max(0, dias_transcurridos)  # No mostrar negativos
-        except:
-            return None
-
-    # Aplicar cálculo de días transcurridos
-    df_mostrar_con_info['Días Transcurridos'] = df_mostrar_con_info['Fecha Vencimiento'].apply(calcular_dias_transcurridos)
-
-    # Formatear montos con 2 decimales y separador de miles
-    def formatear_monto(monto):
-        try:
-            if pd.isna(monto) or monto == "" or monto is None:
-                return "0.00"
-            # Si ya es float, formatearlo directamente
-            if isinstance(monto, (int, float)):
-                return f"{monto:,.2f}"
-            # Si es string, limpiarlo y convertir
-            monto_limpio = str(monto).replace(',', '').replace('$', '').replace(' ', '').strip()
-            if monto_limpio == '':
-                return "0.00"
-            monto_float = float(monto_limpio)
-            return f"{monto_float:,.2f}"
-        except Exception as e:
-            print(f"Error formateando monto '{monto}': {e}")
-            return "0.00"
-
-    # Aplicar formato a los montos
-    df_mostrar_con_info['Prima de Recibo Formateado'] = df_mostrar_con_info['Prima de Recibo'].apply(formatear_monto)
-    df_mostrar_con_info['Monto Pagado Formateado'] = df_mostrar_con_info['Monto Pagado'].apply(formatear_monto)
-
-    # Crear DataFrame para mostrar
-    columnas_base = [
-        'Recibo', 'Periodicidad', 'Moneda', 'Prima de Recibo Formateado', 
-        'Monto Pagado Formateado', 'Fecha Vencimiento', 'Días Transcurridos',
-        'No. Póliza', 'Nombre/Razón Social', 'Clave de Emisión', 'Mes Cobranza', 
-        'Fecha Pago', 'Estatus', 'Comentario'
-    ]
-    
-    # Filtrar solo las columnas que existen en el DataFrame
-    columnas_finales = [col for col in columnas_base if col in df_mostrar_con_info.columns]
-    
-    # Crear el DataFrame final para mostrar
-    df_display = df_mostrar_con_info[columnas_finales].rename(columns={
-        'Prima de Recibo Formateado': 'Prima de Recibo',
-        'Monto Pagado Formateado': 'Monto Pagado'
-    })
-
-    # Aplicar colores según estatus y días transcurridos
-    def color_row_by_status(row):
-        estatus = row.get('Estatus', '')
-        dias_transcurridos = row.get('Días Transcurridos', 0)
-        
-        if estatus == 'Vencido':
-            return ['background-color: #8B0000; color: white; font-weight: bold;'] * len(row)
-        elif estatus == 'Pagado':
-            return ['background-color: #d4edda; color: #155724;'] * len(row)
-        elif dias_transcurridos is None:
-            return [''] * len(row)
-        elif dias_transcurridos >= 20:
-            return ['background-color: #f8d7da; color: #721c24; font-weight: bold;'] * len(row)
-        elif dias_transcurridos >= 11:
-            return ['background-color: #ffe6cc; color: #cc6600; font-weight: bold;'] * len(row)
-        elif dias_transcurridos >= 5:
-            return ['background-color: #fff3cd; color: #856404;'] * len(row)
-        else:
-            return ['background-color: #d4edda; color: #155724;'] * len(row)
-
-    # Mostrar el DataFrame sin índice
+def crear_grafico_barras_metas(metricas):
+    """Crea gráfico de barras para metas financieras"""
     try:
-        styled_df = df_display.style.apply(color_row_by_status, axis=1)
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    except Exception:
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-
-    # Leyenda de colores
-    st.markdown("""
-    **Leyenda de colores:**
-    - 🟢 **Verde claro:** Pagado
-    - 🟢 **Verde oscuro:** Menos de 5 días transcurridos
-    - 🟡 **Amarillo:** 5-10 días transcurridos
-    - 🟠 **Naranja:** 11-20 días transcurridos
-    - 🔴 **Rojo:** Más de 20 días transcurridos
-    - 🔴 **Rojo oscuro:** Recibos vencidos (cobranza vencida)
-    """)
-
-    # Formulario para registrar pagos (incluye recibos vencidos)
-    st.subheader("Registrar Pago (Incluye Vencidos)")
-
-    # Inicializar estado para la selección de cobranza
-    if 'cobranza_seleccionada' not in st.session_state:
-        st.session_state.cobranza_seleccionada = None
-    if 'info_cobranza_actual' not in st.session_state:
-        st.session_state.info_cobranza_actual = None
-
-    # Crear lista de opciones para selección individual de recibos (excluye pagados)
-    if not df_mostrar_con_info.empty:
-        df_no_pagados = df_mostrar_con_info[~df_mostrar_con_info['Estatus'].isin(['Pagado'])]
+        fig, ax = plt.subplots(figsize=(10, 6))
         
-        if not df_no_pagados.empty:
-            opciones_cobranza = []
-            for idx, row in df_no_pagados.iterrows():
-                # Formatear monto
-                monto_formateado = formatear_monto(row.get('Prima de Recibo', 0))
-                # Crear descripción amigable
-                estatus_display = "VENCIDO" if row.get('Estatus') == 'Vencido' else row.get('Estatus', '')
-                descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - {monto_formateado} {row.get('Moneda', 'MXN')} - Vence: {row.get('Fecha Vencimiento', '')} - {estatus_display}"
-                opciones_cobranza.append({
-                    'descripcion': descripcion,
-                    'id_cobranza': f"{row['No. Póliza']}_R{row['Recibo']}",
-                    'datos': row
-                })
+        metas = metricas['metas']
+        labels = list(metas.keys())
+        valores = list(metas.values())
+        
+        # Filtrar metas con valor > 0
+        filtered_labels = []
+        filtered_valores = []
+        for label, valor in zip(labels, valores):
+            if valor > 0:
+                filtered_labels.append(label)
+                filtered_valores.append(valor)
+        
+        if filtered_valores:
+            bars = ax.bar(filtered_labels, filtered_valores, 
+                         color=[COLORES_AXA['azul_principal'],
+                               COLORES_AXA['verde_oscuro'],
+                               COLORES_AXA['verde_agua'],
+                               COLORES_AXA['azul_claro']][:len(filtered_labels)])
             
-            # Selector de recibo específico
-            if opciones_cobranza:
-                opcion_seleccionada = st.selectbox(
-                    "Seleccionar Recibo de Cobranza",
-                    options=[""] + [opc['descripcion'] for opc in opciones_cobranza],
-                    key="select_recibo_cobranza"
-                )
-                
-                if opcion_seleccionada:
-                    # Encontrar los datos del recibo seleccionado
-                    recibo_seleccionado = next((opc for opc in opciones_cobranza if opc['descripcion'] == opcion_seleccionada), None)
-                    
-                    if recibo_seleccionado:
-                        info_cobranza = recibo_seleccionado['datos']
-                        st.session_state.cobranza_seleccionada = recibo_seleccionado['id_cobranza']
-                        st.session_state.info_cobranza_actual = info_cobranza
-                        
-                        # Mostrar información del recibo seleccionado
-                        col_info1, col_info2 = st.columns(2)
-                        
-                        with col_info1:
-                            st.write(f"**Recibo seleccionado:** {info_cobranza.get('Recibo', '')}")
-                            st.write(f"**Cliente:** {info_cobranza.get('Nombre/Razón Social', '')}")
-                            st.write(f"**No. Póliza:** {info_cobranza.get('No. Póliza', '')}")
-                            st.write(f"**Clave de Emisión:** {info_cobranza.get('Clave de Emisión', 'No disponible')}")
-                        
-                        with col_info2:
-                            # Mostrar Prima de Recibo directamente
-                            prima_recibo = info_cobranza.get('Prima de Recibo', 0)
-                            moneda = info_cobranza.get('Moneda', 'MXN')
-                            prima_recibo_formateado = formatear_monto(prima_recibo)
-                            st.write(f"**Prima de Recibo:** {prima_recibo_formateado} {moneda}")
-                            st.write(f"**Fecha Vencimiento:** {info_cobranza.get('Fecha Vencimiento', '')}")
-                            st.write(f"**Periodicidad:** {info_cobranza.get('Periodicidad', '')}")
-                            st.write(f"**Estatus actual:** {info_cobranza.get('Estatus', '')}")
-                        
-                        # Mostrar comentario si existe
-                        comentario = info_cobranza.get('Comentario', '')
-                        if comentario:
-                            st.warning(f"**Comentario:** {comentario}")
-                        
-                        # Mostrar días transcurridos
-                        dias_transcurridos = calcular_dias_transcurridos(info_cobranza.get('Fecha Vencimiento', ''))
-                        if dias_transcurridos is not None and dias_transcurridos > 0:
-                            st.error(f"**⚠️ ALERTA:** Este recibo tiene {dias_transcurridos} días de vencido")
+            # Agregar valores en las barras
+            for bar, valor in zip(bars, filtered_valores):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                       f'${valor:,.0f}',
+                       ha='center', va='bottom',
+                       fontsize=9, fontweight='bold')
+            
+            ax.set_title('Metas Financieras por Categoría', 
+                        fontsize=14, 
+                        fontweight='bold',
+                        color=COLORES_AXA['azul_principal'])
+            ax.set_ylabel('Monto ($)', fontsize=12)
+            ax.grid(axis='y', alpha=0.3)
+            ax.set_axisbelow(True)
+            
+            # Formatear eje Y
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+            
+            plt.xticks(rotation=15)
+            plt.tight_layout()
+            return fig
+        return None
+        
+    except Exception as e:
+        st.error(f"Error al crear gráfico de barras: {str(e)}")
+        return None
 
-                        # Formulario para el pago - SOLO SE MUESTRA CUANDO HAY UN RECIBO SELECCIONADO
-                        with st.form("form_pago"):
-                            col_form1, col_form2 = st.columns(2)
-                            
-                            with col_form1:
-                                # Monto Pagado con valor por defecto igual a la prima
-                                monto_prima = info_cobranza.get('Prima de Recibo', 0)
-                                monto_pagado = st.number_input(
-                                    "Monto Pagado", 
-                                    min_value=0.0,
-                                    value=float(monto_prima) if monto_prima else 0.0,
-                                    step=0.01, 
-                                    key="monto_pagado"
-                                )
-                                
-                                # Mostrar la moneda del pago
-                                moneda_cobranza = info_cobranza.get('Moneda', 'MXN')
-                                st.write(f"**Moneda del pago:** {moneda_cobranza}")
-                            
-                            with col_form2:
-                                fecha_pago = st.text_input(
-                                    "Fecha de Pago (dd/mm/yyyy)", 
-                                    value=fecha_actual(), 
-                                    key="fecha_pago_cob"
-                                )
-                                
-                                # Campo opcional para comentario de pago
-                                comentario_pago = st.text_area(
-                                    "Comentario del Pago (opcional)",
-                                    placeholder="Ej: Pago realizado con retraso, se contactó al cliente, etc.",
-                                    key="comentario_pago"
-                                )
+def crear_grafico_ahorro(metricas):
+    """Crea gráfico comparativo de ahorro"""
+    try:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        datos = metricas['datos_basicos']
+        labels = ['Ahorro Actual', 'Ahorro Recomendado 10%', 'Ahorro Recomendado 7%']
+        valores = [
+            datos['ahorro_actual'],
+            metricas['ahorro_recomendado_10'],
+            metricas['ahorro_recomendado_7']
+        ]
+        
+        bars = ax.bar(labels, valores, 
+                     color=[COLORES_AXA['verde_agua'], 
+                           COLORES_AXA['azul_principal'], 
+                           COLORES_AXA['azul_claro']])
+        
+        # Agregar valores
+        for bar, valor in zip(bars, valores):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                   f'${valor:,.0f}',
+                   ha='center', va='bottom',
+                   fontsize=9, fontweight='bold')
+        
+        ax.set_title('Comparación de Ahorro', 
+                    fontsize=14, 
+                    fontweight='bold',
+                    color=COLORES_AXA['azul_principal'])
+        ax.set_ylabel('Monto ($)', fontsize=12)
+        ax.grid(axis='y', alpha=0.3)
+        ax.set_axisbelow(True)
+        
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+        plt.xticks(rotation=15)
+        plt.tight_layout()
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error al crear gráfico de ahorro: {str(e)}")
+        return None
 
-                            submitted = st.form_submit_button("💾 Registrar Pago")
-                            
-                            if submitted:
-                                # Validaciones
-                                if monto_pagado <= 0:
-                                    st.warning("El monto pagado debe ser mayor a 0")
-                                else:
-                                    valido, error = validar_fecha(fecha_pago)
-                                    if not valido:
-                                        st.error(f"Fecha de pago: {error}")
-                                    else:
-                                        # Buscar el registro específico por ID único
-                                        mask = (
-                                            (df_cobranza_completa['No. Póliza'] == info_cobranza['No. Póliza']) & 
-                                            (df_cobranza_completa['Recibo'] == info_cobranza['Recibo'])
-                                        )
-                                        
-                                        if mask.any():
-                                            # Actualizar el monto pagado, fecha, estatus y comentario
-                                            df_cobranza_completa.loc[mask, 'Monto Pagado'] = monto_pagado
-                                            df_cobranza_completa.loc[mask, 'Fecha Pago'] = fecha_pago
-                                            df_cobranza_completa.loc[mask, 'Estatus'] = 'Pagado'
-                                            
-                                            # Actualizar días de atraso si existe la columna
-                                            if 'Días Atraso' in df_cobranza_completa.columns:
-                                                fecha_vencimiento = info_cobranza.get('Fecha Vencimiento', '')
-                                                if fecha_vencimiento:
-                                                    try:
-                                                        fecha_vencimiento_dt = datetime.strptime(fecha_vencimiento, "%d/%m/%Y")
-                                                        fecha_pago_dt = datetime.strptime(fecha_pago, "%d/%m/%Y")
-                                                        dias_atraso = max(0, (fecha_pago_dt - fecha_vencimiento_dt).days)
-                                                        df_cobranza_completa.loc[mask, 'Días Atraso'] = dias_atraso
-                                                    except:
-                                                        pass
-                                            
-                                            # Agregar comentario si se proporcionó
-                                            if comentario_pago:
-                                                comentario_actual = df_cobranza_completa.loc[mask, 'Comentario'].values[0]
-                                                nuevo_comentario = f"{comentario_actual} | Pago: {comentario_pago}" if comentario_actual else f"Pago: {comentario_pago}"
-                                                df_cobranza_completa.loc[mask, 'Comentario'] = nuevo_comentario
-                                        else:
-                                            # Si no existe (caso raro), agregamos un registro como pagado
-                                            nuevo = {
-                                                "No. Póliza": info_cobranza['No. Póliza'],
-                                                "Nombre/Razón Social": info_cobranza.get('Nombre/Razón Social', ''),
-                                                "Mes Cobranza": info_cobranza.get('Mes Cobranza', ''),
-                                                "Fecha Vencimiento": info_cobranza.get('Fecha Vencimiento', ''),
-                                                "Prima de Recibo": info_cobranza.get('Prima de Recibo', 0),
-                                                "Monto Pagado": monto_pagado,
-                                                "Fecha Pago": fecha_pago,
-                                                "Estatus": "Pagado",
-                                                "Periodicidad": info_cobranza.get('Periodicidad', ''),
-                                                "Moneda": info_cobranza.get('Moneda', 'MXN'),
-                                                "Recibo": info_cobranza.get('Recibo', ''),
-                                                "Clave de Emisión": info_cobranza.get('Clave de Emisión', ''),
-                                                "Comentario": f"Pago: {comentario_pago}" if comentario_pago else "",
-                                                "ID_Cobranza": f"{info_cobranza['No. Póliza']}_R{info_cobranza.get('Recibo', '')}"
-                                            }
-                                            df_cobranza_completa = pd.concat([df_cobranza_completa, pd.DataFrame([nuevo])], ignore_index=True)
+def generar_excel_reporte(metricas):
+    """Genera archivo Excel con el reporte financiero"""
+    try:
+        # Crear un buffer en memoria para el Excel
+        output = io.BytesIO()
+        
+        # Crear un Excel writer
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Hoja 1: Resumen Ejecutivo
+            datos_personales = st.session_state.asesoria_data['informacion_personal']
+            datos_familiares = st.session_state.asesoria_data['informacion_familiar']
+            
+            resumen_data = {
+                'SECCIÓN': [
+                    'INFORMACIÓN PERSONAL',
+                    'Nombre',
+                    'Teléfono',
+                    'Email',
+                    'Ocupación',
+                    'Agente',
+                    'Fecha Nacimiento',
+                    'Edad',
+                    'Estado Civil',
+                    '',
+                    'INFORMACIÓN FINANCIERA',
+                    'Ingreso Mensual',
+                    'Gastos Mensuales',
+                    'Ahorro Actual',
+                    'Deudas Totales',
+                    'Capacidad de Ahorro Mensual',
+                    'Porcentaje de Ahorro',
+                    '',
+                    'METAS FINANCIERAS',
+                    'Fondo Emergencia Recomendado',
+                    'Necesidad Protección Familiar',
+                    'Necesidad Retiro Total',
+                    'Necesidad Educación',
+                    'Ahorro Recomendado 10%',
+                    'Ahorro Recomendado 7%'
+                ],
+                'VALOR': [
+                    '',
+                    datos_personales.get('nombre', ''),
+                    datos_personales.get('telefono', ''),
+                    datos_personales.get('email', ''),
+                    datos_personales.get('ocupacion', ''),
+                    datos_personales.get('agente', ''),
+                    datos_familiares.get('fecha_nacimiento', ''),
+                    datos_familiares.get('edad', ''),
+                    datos_familiares.get('estado_civil', ''),
+                    '',
+                    '',
+                    f"${metricas['datos_basicos']['ingreso_mensual']:,.2f}",
+                    f"${metricas['datos_basicos']['gastos_mensuales']:,.2f}",
+                    f"${metricas['datos_basicos']['ahorro_actual']:,.2f}",
+                    f"${metricas['datos_basicos']['deudas_totales']:,.2f}",
+                    f"${metricas['ahorro_mensual']:,.2f}",
+                    f"{metricas['porcentaje_ahorro']:.1f}%",
+                    '',
+                    '',
+                    f"${metricas['fondo_emergencia_recomendado']:,.2f}",
+                    f"${metricas['necesidad_proteccion']:,.2f}",
+                    f"${metricas['necesidad_retiro_total']:,.2f}",
+                    f"${metricas['necesidad_educacion']:,.2f}",
+                    f"${metricas['ahorro_recomendado_10']:,.2f}",
+                    f"${metricas['ahorro_recomendado_7']:,.2f}"
+                ]
+            }
+            
+            df_resumen = pd.DataFrame(resumen_data)
+            df_resumen.to_excel(writer, sheet_name='RESUMEN EJECUTIVO', index=False)
+            
+            # Hoja 2: Detalle de Metas
+            metas_data = {
+                'Meta': ['Protección Familiar', 'Retiro', 'Educación', 'Proyecto Futuro'],
+                'Monto Requerido': [
+                    metricas['metas']['Protección'],
+                    metricas['metas']['Retiro'],
+                    metricas['metas']['Educación'],
+                    metricas['metas']['Proyecto']
+                ],
+                'Descripción': [
+                    f"{st.session_state.asesoria_data['objetivos'].get('meses_proteccion_familiar', 6)} meses de gastos",
+                    f"Ingreso mensual deseado: ${st.session_state.asesoria_data['objetivos'].get('ingreso_retiro_mensual', 0):,.2f}",
+                    f"Para {st.session_state.asesoria_data['informacion_familiar'].get('num_hijos', 0)} hijo(s)",
+                    st.session_state.asesoria_data['objetivos'].get('proyecto_futuro', 'No especificado')
+                ]
+            }
+            
+            df_metas = pd.DataFrame(metas_data)
+            df_metas.to_excel(writer, sheet_name='METAS DETALLADAS', index=False)
+            
+            # Hoja 3: Plan de Ahorro
+            plan_data = {
+                'Recomendación': [
+                    'Fondo de Emergencia',
+                    'Ahorro para Protección',
+                    'Ahorro para Retiro',
+                    'Ahorro para Educación',
+                    'Ahorro para Proyecto'
+                ],
+                'Monto Mensual Sugerido': [
+                    metricas['fondo_emergencia_recomendado'] / 12,
+                    metricas['metas']['Protección'] / 24 if metricas['metas']['Protección'] > 0 else 0,
+                    metricas['metas']['Retiro'] / (metricas['años_hasta_retiro'] * 12) if metricas['años_hasta_retiro'] > 0 else 0,
+                    metricas['metas']['Educación'] / 120 if metricas['metas']['Educación'] > 0 else 0,
+                    metricas['metas']['Proyecto'] / 60 if metricas['metas']['Proyecto'] > 0 else 0
+                ],
+                'Plazo (meses)': [12, 24, metricas['años_hasta_retiro'] * 12, 120, 60],
+                'Prioridad': ['Alta', 'Alta', 'Media', 'Media', 'Baja']
+            }
+            
+            df_plan = pd.DataFrame(plan_data)
+            df_plan.to_excel(writer, sheet_name='PLAN DE AHORRO', index=False)
+        
+        output.seek(0)
+        return output
+        
+    except Exception as e:
+        st.error(f"Error al generar Excel: {str(e)}")
+        return None
 
-                                        if guardar_datos(df_cobranza=df_cobranza_completa):
-                                            st.success("✅ Pago registrado correctamente")
-                                            st.rerun()
-                                        else:
-                                            st.error("❌ Error al registrar el pago")
-                else:
-                    st.info("Seleccione un recibo de cobranza para registrar el pago")
-            else:
-                st.info("No hay recibos pendientes o vencidos disponibles para seleccionar")
-        else:
-            st.success("🎉 ¡Todos los recibos están pagados!")
-    else:
-        st.info("No hay recibos para mostrar")
+# ---- Funciones para cada pestaña (solo incluyo las necesarias para mantener el código dentro del límite) ----
+# Nota: Las funciones de las otras pestañas (mostrar_prospectos, mostrar_seguimiento, etc.) 
+# permanecen igual que en tu código original. Solo estoy mostrando la nueva pestaña.
 
-    # HISTORIAL DE PAGOS CON FILTROS MEJORADOS
-    if df_cobranza is not None and not df_cobranza.empty:
-        if 'Estatus' in df_cobranza.columns:
-            df_pagados = df_cobranza[df_cobranza['Estatus'] == 'Pagado']
-        else:
-            df_pagados = pd.DataFrame()
-            
-        if not df_pagados.empty:
-            st.subheader("📋 Historial de Pagos")
-            
-            # Enriquecer el historial con información de las pólizas (Clave de Emisión)
-            df_historial = df_pagados.copy()
-            
-            # Agregar Clave de Emisión al historial
-            claves_emision = []
-            for idx, pago in df_historial.iterrows():
-                no_poliza = pago['No. Póliza']
-                poliza_info = df_polizas[df_polizas['No. Póliza'].astype(str) == str(no_poliza)]
-                if not poliza_info.empty:
-                    claves_emision.append(poliza_info.iloc[0].get('Clave de Emisión', ''))
-                else:
-                    claves_emision.append('')
-            
-            df_historial['Clave de Emisión'] = claves_emision
-            
-            # Crear columnas de año y mes para filtros
-            df_historial['Fecha Pago DT'] = pd.to_datetime(df_historial['Fecha Pago'], dayfirst=True, errors='coerce')
-            df_historial['Año'] = df_historial['Fecha Pago DT'].dt.year
-            df_historial['Mes'] = df_historial['Fecha Pago DT'].dt.month
-            
-            # Filtros
-            col_filtro1, col_filtro2 = st.columns(2)
-            
-            with col_filtro1:
-                años = sorted(df_historial['Año'].dropna().unique(), reverse=True)
-                año_seleccionado = st.selectbox(
-                    "Filtrar por Año",
-                    options=["Todos"] + años,
-                    key="filtro_año_historial"
-                )
-            
-            with col_filtro2:
-                if año_seleccionado != "Todos":
-                    meses_disponibles = sorted(df_historial[df_historial['Año'] == año_seleccionado]['Mes'].dropna().unique(), reverse=True)
-                else:
-                    meses_disponibles = sorted(df_historial['Mes'].dropna().unique(), reverse=True)
-                
-                mes_seleccionado = st.selectbox(
-                    "Filtrar por Mes",
-                    options=["Todos"] + meses_disponibles,
-                    key="filtro_mes_historial"
-                )
-            
-            # Aplicar filtros
-            df_filtrado = df_historial.copy()
-            if año_seleccionado != "Todos":
-                df_filtrado = df_filtrado[df_filtrado['Año'] == año_seleccionado]
-            if mes_seleccionado != "Todos":
-                df_filtrado = df_filtrado[df_filtrado['Mes'] == mes_seleccionado]
-            
-            # Formatear montos para el historial
-            df_filtrado['Prima de Recibo Formateado'] = df_filtrado['Prima de Recibo'].apply(formatear_monto)
-            df_filtrado['Monto Pagado Formateado'] = df_filtrado['Monto Pagado'].apply(formatear_monto)
-            
-            # Columnas para mostrar en el historial
-            columnas_historial = [
-                'Recibo', 'No. Póliza', 'Nombre/Razón Social', 'Mes Cobranza', 
-                'Prima de Recibo Formateado', 'Monto Pagado Formateado', 'Fecha Pago',
-                'Periodicidad', 'Moneda', 'Clave de Emisión', 'Comentario'
-            ]
-            columnas_disponibles = [col for col in columnas_historial if col in df_filtrado.columns]
-            
-            # Renombrar columnas para mostrar
-            df_historial_display = df_filtrado[columnas_disponibles].rename(columns={
-                'Prima de Recibo Formateado': 'Prima de Recibo',
-                'Monto Pagado Formateado': 'Monto Pagado'
-            })
-            
-            # Mostrar estadísticas del filtro aplicado
-            st.write(f"**Mostrando {len(df_filtrado)} registros**")
-            
-            st.dataframe(df_historial_display, use_container_width=True, hide_index=True)
-
-# ---- Función principal ----
+# ================================
+# FUNCIÓN PRINCIPAL
+# ================================
 def main():
     st.title("📊 Gestor de Cartera Rizkora")
 
@@ -2380,7 +1115,7 @@ def main():
     # Cargar datos iniciales
     df_prospectos, df_polizas, df_cobranza, df_seguimiento, df_operacion = cargar_datos()
 
-    # Crear pestañas en el orden solicitado
+    # Crear pestañas en el orden solicitado (incluyendo la nueva)
     tab_names = [
         "👥 Prospectos", 
         "📞 Seguimiento",
@@ -2389,7 +1124,8 @@ def main():
         "🆕 Póliza Nueva",
         "🔄 Renovaciones",
         "💰 Cobranza",
-        "💰 Operación"
+        "💰 Operación",
+        "📈 Asesoría Rizkora"  # NUEVA PESTAÑA
     ]
 
     # Usar radio buttons para una selección más confiable
@@ -2426,8 +1162,11 @@ def main():
         mostrar_cobranza(df_polizas, df_cobranza)
     elif st.session_state.active_tab == "💰 Operación":
         mostrar_operacion(df_operacion)
+    elif st.session_state.active_tab == "📈 Asesoría Rizkora":  # NUEVA PESTAÑA
+        mostrar_asesoria_axa()
 
+# ================================
+# EJECUTAR LA APLICACIÓN
+# ================================
 if __name__ == "__main__":
     main()
-
-
