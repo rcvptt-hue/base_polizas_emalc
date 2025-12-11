@@ -8,7 +8,7 @@ Updated full version with:
  - Todas las secciones originales mejoradas
  - Nueva pestaña de Operación para gastos operacionales
  - Cobranza que incluye recibos vencidos con comentario especial
- - NUEVA PESTAÑA: Asesoría AXA con generación de reporte financiero
+ - NUEVA PESTAÑA: Asesoría Rizkora con generación de reporte financiero
 """
 
 import streamlit as st
@@ -25,7 +25,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ================================
-# CONFIGURACIÓN DE COLORES AXA
+# CONFIGURACIÓN DE COLORES Rizkora
 # ================================
 COLORES_AXA = {
     'azul_principal': '#064c78',      # Mayor uso
@@ -478,10 +478,10 @@ def calcular_cobranza():
         return pd.DataFrame()
 
 # ================================
-# 🆕 NUEVA PESTAÑA: ASESORÍA AXA
+# 🆕 NUEVA PESTAÑA: ASESORÍA Rizkora
 # ================================
 def mostrar_asesoria_axa():
-    st.header("📈 Asesoría Financiera AXA")
+    st.header("📈 Asesoría Financiera Rizkora")
     st.markdown("### Detección de necesidades financieras para una asesoría ideal")
     
     # Asegurar que la estructura de datos esté inicializada correctamente
@@ -3234,7 +3234,7 @@ def main():
         "🔄 Renovaciones",
         "💰 Cobranza",
         "💰 Operación",
-        "📈 Asesoría AXA"  # NUEVA PESTAÑA
+        "📈 Asesoría Rizkora"  # NUEVA PESTAÑA
     ]
 
     # Usar radio buttons para una selección más confiable
@@ -3271,7 +3271,7 @@ def main():
         mostrar_cobranza(df_polizas, df_cobranza)
     elif st.session_state.active_tab == "💰 Operación":
         mostrar_operacion(df_operacion)
-    elif st.session_state.active_tab == "📈 Asesoría AXA":  # NUEVA PESTAÑA
+    elif st.session_state.active_tab == "📈 Asesoría Rizkora":  # NUEVA PESTAÑA
         mostrar_asesoria_axa()
 
 # ================================
@@ -3283,3 +3283,4 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
