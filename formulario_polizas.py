@@ -18,10 +18,9 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import re
 from dateutil.relativedelta import relativedelta
-import matplotlib.pyplot as plt
 import numpy as np
 import io
-from io import BytesIO
+import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -71,9 +70,38 @@ if 'active_tab' not in st.session_state:
 if 'notas_prospecto_actual' not in st.session_state:
     st.session_state.notas_prospecto_actual = ""
 if 'asesoria_data' not in st.session_state:
-    st.session_state.asesoria_data = {}
+    st.session_state.asesoria_data = {
+        'informacion_personal': {},
+        'informacion_familiar': {},
+        'informacion_financiera': {},
+        'objetivos': {}
+    }
 if 'metricas_financieras' not in st.session_state:
     st.session_state.metricas_financieras = None
+if 'modo_edicion_prospectos' not in st.session_state:
+    st.session_state.modo_edicion_prospectos = False
+if 'prospecto_editando' not in st.session_state:
+    st.session_state.prospecto_editando = None
+if 'prospecto_data' not in st.session_state:
+    st.session_state.prospecto_data = {}
+if 'form_key' not in st.session_state:
+    st.session_state.form_key = 0
+if 'modo_edicion_operacion' not in st.session_state:
+    st.session_state.modo_edicion_operacion = False
+if 'operacion_editando' not in st.session_state:
+    st.session_state.operacion_editando = None
+if 'operacion_data' not in st.session_state:
+    st.session_state.operacion_data = {}
+if 'cobranza_seleccionada' not in st.session_state:
+    st.session_state.cobranza_seleccionada = None
+if 'info_cobranza_actual' not in st.session_state:
+    st.session_state.info_cobranza_actual = None
+if 'filtro_cobranza' not in st.session_state:
+    st.session_state.filtro_cobranza = True
+if 'editando_cliente' not in st.session_state:
+    st.session_state.editando_cliente = False
+if 'cliente_data_edit' not in st.session_state:
+    st.session_state.cliente_data_edit = {}
 
 # Configuración de Google Sheets
 @st.cache_resource(ttl=3600)
@@ -456,7 +484,7 @@ def mostrar_asesoria_axa():
     st.header("📈 Asesoría Financiera AXA")
     st.markdown("### Detección de necesidades financieras para una asesoría ideal")
     
-    # Inicializar datos de asesoría si no existen
+    # Asegurar que la estructura de datos esté inicializada correctamente
     if 'asesoria_data' not in st.session_state:
         st.session_state.asesoria_data = {
             'informacion_personal': {},
@@ -464,6 +492,11 @@ def mostrar_asesoria_axa():
             'informacion_financiera': {},
             'objetivos': {}
         }
+    
+    # Asegurar que todos los sub-diccionarios existan
+    for key in ['informacion_personal', 'informacion_familiar', 'informacion_financiera', 'objetivos']:
+        if key not in st.session_state.asesoria_data:
+            st.session_state.asesoria_data[key] = {}
     
     # Usar pestañas para organizar el formulario
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -479,32 +512,44 @@ def mostrar_asesoria_axa():
         col1, col2 = st.columns(2)
         
         with col1:
+            # Asegurar que la clave exista antes de acceder
+            nombre = st.session_state.asesoria_data['informacion_personal'].get('nombre', '')
             st.session_state.asesoria_data['informacion_personal']['nombre'] = st.text_input(
                 "Nombre completo*", 
-                value=st.session_state.asesoria_data['informacion_personal'].get('nombre', '')
+                value=nombre
             )
+            
+            telefono = st.session_state.asesoria_data['informacion_personal'].get('telefono', '')
             st.session_state.asesoria_data['informacion_personal']['telefono'] = st.text_input(
                 "Teléfono*", 
-                value=st.session_state.asesoria_data['informacion_personal'].get('telefono', '')
+                value=telefono
             )
+            
+            email = st.session_state.asesoria_data['informacion_personal'].get('email', '')
             st.session_state.asesoria_data['informacion_personal']['email'] = st.text_input(
                 "Email*", 
-                value=st.session_state.asesoria_data['informacion_personal'].get('email', '')
+                value=email
             )
             
         with col2:
+            ocupacion = st.session_state.asesoria_data['informacion_personal'].get('ocupacion', '')
             st.session_state.asesoria_data['informacion_personal']['ocupacion'] = st.text_input(
                 "Ocupación*", 
-                value=st.session_state.asesoria_data['informacion_personal'].get('ocupacion', '')
+                value=ocupacion
             )
+            
+            fumador = st.session_state.asesoria_data['informacion_personal'].get('fumador', '')
+            fumador_index = ["", "Sí", "No"].index(fumador) if fumador in ["", "Sí", "No"] else 0
             st.session_state.asesoria_data['informacion_personal']['fumador'] = st.selectbox(
                 "¿Has fumado en los últimos dos años?*", 
                 options=["", "Sí", "No"],
-                index=["", "Sí", "No"].index(st.session_state.asesoria_data['informacion_personal'].get('fumador', '')) if st.session_state.asesoria_data['informacion_personal'].get('fumador') in ["", "Sí", "No"] else 0
+                index=fumador_index
             )
+            
+            agente = st.session_state.asesoria_data['informacion_personal'].get('agente', '')
             st.session_state.asesoria_data['informacion_personal']['agente'] = st.text_input(
                 "Nombre del agente*", 
-                value=st.session_state.asesoria_data['informacion_personal'].get('agente', '')
+                value=agente
             )
     
     with tab2:
@@ -512,18 +557,20 @@ def mostrar_asesoria_axa():
         col1, col2 = st.columns(2)
         
         with col1:
+            estado_civil = st.session_state.asesoria_data['informacion_familiar'].get('estado_civil', '')
+            estado_civil_index = ["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"].index(estado_civil) if estado_civil in ["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"] else 0
             st.session_state.asesoria_data['informacion_familiar']['estado_civil'] = st.selectbox(
                 "Estado civil", 
                 options=["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"],
-                index=["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"].index(st.session_state.asesoria_data['informacion_familiar'].get('estado_civil', '')) if st.session_state.asesoria_data['informacion_familiar'].get('estado_civil') in ["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"] else 0
+                index=estado_civil_index
             )
             
-            fecha_nacimiento = st.text_input(
+            fecha_nacimiento = st.session_state.asesoria_data['informacion_familiar'].get('fecha_nacimiento', '')
+            st.session_state.asesoria_data['informacion_familiar']['fecha_nacimiento'] = st.text_input(
                 "Fecha de nacimiento (dd/mm/yyyy)", 
-                value=st.session_state.asesoria_data['informacion_familiar'].get('fecha_nacimiento', ''),
+                value=fecha_nacimiento,
                 placeholder="dd/mm/yyyy"
             )
-            st.session_state.asesoria_data['informacion_familiar']['fecha_nacimiento'] = fecha_nacimiento
             
             # Calcular edad si se proporciona fecha
             if fecha_nacimiento:
@@ -536,29 +583,31 @@ def mostrar_asesoria_axa():
                 except:
                     st.session_state.asesoria_data['informacion_familiar']['edad'] = None
             
+            hobbie = st.session_state.asesoria_data['informacion_familiar'].get('hobbie', '')
             st.session_state.asesoria_data['informacion_familiar']['hobbie'] = st.text_input(
                 "¿Tienes algún hobbie? (opcional)", 
-                value=st.session_state.asesoria_data['informacion_familiar'].get('hobbie', '')
+                value=hobbie
             )
             
         with col2:
+            nombre_pareja = st.session_state.asesoria_data['informacion_familiar'].get('nombre_pareja', '')
             st.session_state.asesoria_data['informacion_familiar']['nombre_pareja'] = st.text_input(
                 "Nombre y edad de tu esposo(a)/pareja (opcional)", 
-                value=st.session_state.asesoria_data['informacion_familiar'].get('nombre_pareja', '')
+                value=nombre_pareja
             )
             
             # Gestión de hijos
-            num_hijos = st.number_input(
+            num_hijos = st.session_state.asesoria_data['informacion_familiar'].get('num_hijos', 0) or 0
+            st.session_state.asesoria_data['informacion_familiar']['num_hijos'] = st.number_input(
                 "¿Cuántos hijos tienes?", 
                 min_value=0, 
                 max_value=10, 
-                value=st.session_state.asesoria_data['informacion_familiar'].get('num_hijos', 0) or 0,
+                value=int(num_hijos),
                 step=1
             )
-            st.session_state.asesoria_data['informacion_familiar']['num_hijos'] = num_hijos
             
             hijos = st.session_state.asesoria_data['informacion_familiar'].get('hijos', [])
-            for i in range(num_hijos):
+            for i in range(st.session_state.asesoria_data['informacion_familiar']['num_hijos']):
                 col_hijo1, col_hijo2 = st.columns(2)
                 with col_hijo1:
                     nombre_key = f"hijo_{i}_nombre"
@@ -583,42 +632,82 @@ def mostrar_asesoria_axa():
         col1, col2 = st.columns(2)
         
         with col1:
+            ingreso_mensual = st.session_state.asesoria_data['informacion_financiera'].get('ingreso_mensual', 0)
+            if isinstance(ingreso_mensual, str):
+                try:
+                    ingreso_mensual = float(ingreso_mensual)
+                except:
+                    ingreso_mensual = 0.0
             st.session_state.asesoria_data['informacion_financiera']['ingreso_mensual'] = st.number_input(
                 "Ingreso mensual neto ($)*", 
                 min_value=0.0,
-                value=float(st.session_state.asesoria_data['informacion_financiera'].get('ingreso_mensual', 0)),
+                value=float(ingreso_mensual),
                 step=100.0
             )
+            
+            gastos_mensuales = st.session_state.asesoria_data['informacion_financiera'].get('gastos_mensuales', 0)
+            if isinstance(gastos_mensuales, str):
+                try:
+                    gastos_mensuales = float(gastos_mensuales)
+                except:
+                    gastos_mensuales = 0.0
             st.session_state.asesoria_data['informacion_financiera']['gastos_mensuales'] = st.number_input(
                 "Gastos mensuales totales ($)*", 
                 min_value=0.0,
-                value=float(st.session_state.asesoria_data['informacion_financiera'].get('gastos_mensuales', 0)),
+                value=float(gastos_mensuales),
                 step=100.0
             )
+            
+            ahorro_actual = st.session_state.asesoria_data['informacion_financiera'].get('ahorro_actual', 0)
+            if isinstance(ahorro_actual, str):
+                try:
+                    ahorro_actual = float(ahorro_actual)
+                except:
+                    ahorro_actual = 0.0
             st.session_state.asesoria_data['informacion_financiera']['ahorro_actual'] = st.number_input(
                 "Ahorro actual total ($)", 
                 min_value=0.0,
-                value=float(st.session_state.asesoria_data['informacion_financiera'].get('ahorro_actual', 0)),
+                value=float(ahorro_actual),
                 step=100.0
             )
             
         with col2:
+            deudas_totales = st.session_state.asesoria_data['informacion_financiera'].get('deudas_totales', 0)
+            if isinstance(deudas_totales, str):
+                try:
+                    deudas_totales = float(deudas_totales)
+                except:
+                    deudas_totales = 0.0
             st.session_state.asesoria_data['informacion_financiera']['deudas_totales'] = st.number_input(
                 "Deudas totales ($)", 
                 min_value=0.0,
-                value=float(st.session_state.asesoria_data['informacion_financiera'].get('deudas_totales', 0)),
+                value=float(deudas_totales),
                 step=100.0
             )
+            
+            gastos_alimentacion = st.session_state.asesoria_data['informacion_financiera'].get('gastos_alimentacion', 0)
+            if isinstance(gastos_alimentacion, str):
+                try:
+                    gastos_alimentacion = float(gastos_alimentacion)
+                except:
+                    gastos_alimentacion = 0.0
             st.session_state.asesoria_data['informacion_financiera']['gastos_alimentacion'] = st.number_input(
                 "Gastos en alimentación ($)", 
                 min_value=0.0,
-                value=float(st.session_state.asesoria_data['informacion_financiera'].get('gastos_alimentacion', 0)),
+                value=float(gastos_alimentacion),
                 step=100.0
             )
+            
+            gastos_vivienda = st.session_state.asesoria_data['informacion_financiera'].get('gastos_vivienda', 0)
+            if isinstance(gastos_vivienda, str):
+                try:
+                    gastos_vivienda = float(gastos_vivienda)
+                except:
+                    gastos_vivienda = 0.0
             st.session_state.asesoria_data['informacion_financiera']['gastos_vivienda'] = st.number_input(
                 "Gastos en vivienda ($)", 
                 min_value=0.0,
-                value=float(st.session_state.asesoria_data['informacion_financiera'].get('gastos_vivienda', 0)),
+                value=float(gastos_vivienda),
                 step=100.0
             )
     
@@ -628,48 +717,80 @@ def mostrar_asesoria_axa():
         col1, col2 = st.columns(2)
         
         with col1:
+            edad_retiro_deseada = st.session_state.asesoria_data['objetivos'].get('edad_retiro_deseada', 65)
+            if isinstance(edad_retiro_deseada, str):
+                try:
+                    edad_retiro_deseada = int(edad_retiro_deseada)
+                except:
+                    edad_retiro_deseada = 65
             st.session_state.asesoria_data['objetivos']['edad_retiro_deseada'] = st.number_input(
                 "¿A qué edad te quieres retirar?", 
                 min_value=30,
                 max_value=80,
-                value=st.session_state.asesoria_data['objetivos'].get('edad_retiro_deseada', 65),
+                value=int(edad_retiro_deseada),
                 step=1
             )
+            
+            ingreso_retiro_mensual = st.session_state.asesoria_data['objetivos'].get('ingreso_retiro_mensual', 0)
+            if isinstance(ingreso_retiro_mensual, str):
+                try:
+                    ingreso_retiro_mensual = float(ingreso_retiro_mensual)
+                except:
+                    ingreso_retiro_mensual = 0.0
             st.session_state.asesoria_data['objetivos']['ingreso_retiro_mensual'] = st.number_input(
                 "¿Qué ingreso mensual deseas en tu retiro? ($)", 
                 min_value=0.0,
-                value=float(st.session_state.asesoria_data['objetivos'].get('ingreso_retiro_mensual', 0)),
+                value=float(ingreso_retiro_mensual),
                 step=100.0
             )
             
             # Educación de hijos
             if st.session_state.asesoria_data['informacion_familiar'].get('num_hijos', 0) > 0:
+                costo_universidad_por_hijo = st.session_state.asesoria_data['objetivos'].get('costo_universidad_por_hijo', 0)
+                if isinstance(costo_universidad_por_hijo, str):
+                    try:
+                        costo_universidad_por_hijo = float(costo_universidad_por_hijo)
+                    except:
+                        costo_universidad_por_hijo = 0.0
                 st.session_state.asesoria_data['objetivos']['costo_universidad_por_hijo'] = st.number_input(
                     "Costo estimado de universidad por hijo ($)", 
                     min_value=0.0,
-                    value=float(st.session_state.asesoria_data['objetivos'].get('costo_universidad_por_hijo', 0)),
+                    value=float(costo_universidad_por_hijo),
                     step=1000.0
                 )
         
         with col2:
+            meses_proteccion_familiar = st.session_state.asesoria_data['objetivos'].get('meses_proteccion_familiar', 6)
+            if isinstance(meses_proteccion_familiar, str):
+                try:
+                    meses_proteccion_familiar = int(meses_proteccion_familiar)
+                except:
+                    meses_proteccion_familiar = 6
             st.session_state.asesoria_data['objetivos']['meses_proteccion_familiar'] = st.number_input(
                 "¿Cuántos meses de gastos quieres cubrir para tu familia?", 
                 min_value=0,
                 max_value=24,
-                value=st.session_state.asesoria_data['objetivos'].get('meses_proteccion_familiar', 6),
+                value=int(meses_proteccion_familiar),
                 step=1
             )
             
+            proyecto_futuro = st.session_state.asesoria_data['objetivos'].get('proyecto_futuro', '')
             st.session_state.asesoria_data['objetivos']['proyecto_futuro'] = st.text_input(
                 "¿Tienes algún proyecto a mediano/largo plazo? (ej: casa, negocio)", 
-                value=st.session_state.asesoria_data['objetivos'].get('proyecto_futuro', '')
+                value=proyecto_futuro
             )
             
             if st.session_state.asesoria_data['objetivos'].get('proyecto_futuro'):
+                costo_proyecto = st.session_state.asesoria_data['objetivos'].get('costo_proyecto', 0)
+                if isinstance(costo_proyecto, str):
+                    try:
+                        costo_proyecto = float(costo_proyecto)
+                    except:
+                        costo_proyecto = 0.0
                 st.session_state.asesoria_data['objetivos']['costo_proyecto'] = st.number_input(
                     f"Costo estimado de {st.session_state.asesoria_data['objetivos'].get('proyecto_futuro')} ($)", 
                     min_value=0.0,
-                    value=float(st.session_state.asesoria_data['objetivos'].get('costo_proyecto', 0)),
+                    value=float(costo_proyecto),
                     step=1000.0
                 )
     
@@ -703,28 +824,36 @@ def mostrar_asesoria_axa():
                     fig1 = crear_grafico_pastel_gastos(metricas)
                     if fig1:
                         st.pyplot(fig1)
+                        plt.close(fig1)
                     
                     # Gráfico 2: Metas financieras
                     fig2 = crear_grafico_barras_metas(metricas)
                     if fig2:
                         st.pyplot(fig2)
+                        plt.close(fig2)
                     
                     # Gráfico 3: Comparación de ahorro
                     fig3 = crear_grafico_ahorro(metricas)
                     if fig3:
                         st.pyplot(fig3)
+                        plt.close(fig3)
                     
                     # Generar archivo Excel para descarga
                     excel_buffer = generar_excel_reporte(metricas)
                     
                     # Botón para descargar Excel
-                    st.download_button(
-                        label="📥 Descargar Reporte en Excel",
-                        data=excel_buffer,
-                        file_name=f"Reporte_Financiero_{st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
+                    if excel_buffer:
+                        nombre_cliente = st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')
+                        # Limpiar nombre para el archivo
+                        nombre_archivo = f"Reporte_Financiero_{nombre_cliente.replace(' ', '_')}.xlsx"
+                        
+                        st.download_button(
+                            label="📥 Descargar Reporte en Excel",
+                            data=excel_buffer,
+                            file_name=nombre_archivo,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
                     
                     # Botón para descargar PDF (simulado)
                     if st.button("📄 Generar PDF del Reporte", use_container_width=True):
@@ -741,11 +870,36 @@ def calcular_metricas_financieras():
     try:
         datos = st.session_state.asesoria_data
         
-        # Extraer datos básicos
+        # Extraer datos básicos con valores por defecto seguros
         ingreso_mensual = datos['informacion_financiera'].get('ingreso_mensual', 0)
         gastos_mensuales = datos['informacion_financiera'].get('gastos_mensuales', 0)
         ahorro_actual = datos['informacion_financiera'].get('ahorro_actual', 0)
         edad = datos['informacion_familiar'].get('edad', 30)
+        
+        # Convertir a float si es necesario
+        if isinstance(ingreso_mensual, str):
+            try:
+                ingreso_mensual = float(ingreso_mensual)
+            except:
+                ingreso_mensual = 0.0
+        
+        if isinstance(gastos_mensuales, str):
+            try:
+                gastos_mensuales = float(gastos_mensuales)
+            except:
+                gastos_mensuales = 0.0
+        
+        if isinstance(ahorro_actual, str):
+            try:
+                ahorro_actual = float(ahorro_actual)
+            except:
+                ahorro_actual = 0.0
+        
+        if isinstance(edad, str):
+            try:
+                edad = int(edad)
+            except:
+                edad = 30
         
         # Cálculos básicos
         ingreso_anual = ingreso_mensual * 12
@@ -759,13 +913,31 @@ def calcular_metricas_financieras():
         
         # Necesidad de protección familiar
         meses_proteccion = datos['objetivos'].get('meses_proteccion_familiar', 6)
+        if isinstance(meses_proteccion, str):
+            try:
+                meses_proteccion = int(meses_proteccion)
+            except:
+                meses_proteccion = 6
         necesidad_proteccion = gastos_mensuales * meses_proteccion
         
         # Necesidad de retiro
         edad_retiro_deseada = datos['objetivos'].get('edad_retiro_deseada', 65)
-        años_hasta_retiro = edad_retiro_deseada - edad if edad_retiro_deseada > edad else 0
+        if isinstance(edad_retiro_deseada, str):
+            try:
+                edad_retiro_deseada = int(edad_retiro_deseada)
+            except:
+                edad_retiro_deseada = 65
+        
+        años_hasta_retiro = max(0, edad_retiro_deseada - edad) if edad_retiro_deseada > edad else 0
+        
         ingreso_retiro_mensual = datos['objetivos'].get('ingreso_retiro_mensual', 0)
-        años_retiro = 80 - edad_retiro_deseada  # Esperanza de vida 80 años
+        if isinstance(ingreso_retiro_mensual, str):
+            try:
+                ingreso_retiro_mensual = float(ingreso_retiro_mensual)
+            except:
+                ingreso_retiro_mensual = 0.0
+        
+        años_retiro = max(0, 80 - edad_retiro_deseada)  # Esperanza de vida 80 años
         necesidad_retiro_total = ingreso_retiro_mensual * 12 * años_retiro
         
         # Necesidad educación
@@ -774,8 +946,14 @@ def calcular_metricas_financieras():
         hijos = datos['informacion_familiar'].get('hijos', [])
         costo_universidad = datos['objetivos'].get('costo_universidad_por_hijo', 0)
         
+        if isinstance(costo_universidad, str):
+            try:
+                costo_universidad = float(costo_universidad)
+            except:
+                costo_universidad = 0.0
+        
         for i in range(min(num_hijos, len(hijos))):
-            if hijos[i]['edad']:
+            if hijos[i].get('edad'):
                 try:
                     edad_hijo = int(hijos[i]['edad'])
                     if edad_hijo < 18:
@@ -785,6 +963,11 @@ def calcular_metricas_financieras():
         
         # Necesidad proyecto
         necesidad_proyecto = datos['objetivos'].get('costo_proyecto', 0)
+        if isinstance(necesidad_proyecto, str):
+            try:
+                necesidad_proyecto = float(necesidad_proyecto)
+            except:
+                necesidad_proyecto = 0.0
         
         # Metas financieras
         metas = {
@@ -826,6 +1009,8 @@ def calcular_metricas_financieras():
         
     except Exception as e:
         st.error(f"Error al calcular métricas: {str(e)}")
+        import traceback
+        st.error(f"Detalle del error: {traceback.format_exc()}")
         return None
 
 def crear_grafico_pastel_gastos(metricas):
@@ -838,7 +1023,7 @@ def crear_grafico_pastel_gastos(metricas):
         sizes = [
             datos['gastos_mensuales'],
             datos['ahorro_actual'],
-            datos['deudas_totales']
+            datos.get('deudas_totales', 0)
         ]
         
         # Filtrar valores cero
@@ -1025,7 +1210,7 @@ def generar_excel_reporte(metricas):
                     f"${metricas['datos_basicos']['ingreso_mensual']:,.2f}",
                     f"${metricas['datos_basicos']['gastos_mensuales']:,.2f}",
                     f"${metricas['datos_basicos']['ahorro_actual']:,.2f}",
-                    f"${metricas['datos_basicos']['deudas_totales']:,.2f}",
+                    f"${metricas['datos_basicos'].get('deudas_totales', 0):,.2f}",
                     f"${metricas['ahorro_mensual']:,.2f}",
                     f"{metricas['porcentaje_ahorro']:.1f}%",
                     '',
@@ -1090,9 +1275,11 @@ def generar_excel_reporte(metricas):
         
     except Exception as e:
         st.error(f"Error al generar Excel: {str(e)}")
+        import traceback
+        st.error(f"Detalle del error: {traceback.format_exc()}")
         return None
 
-# ---- NUEVA FUNCIÓN PARA PESTAÑA OPERACIÓN ----
+# ---- FUNCIONES PARA PESTAÑA OPERACIÓN ----
 def mostrar_operacion(df_operacion):
     st.header("💰 Operación - Gastos Operacionales RIZKORA")
 
@@ -1448,7 +1635,7 @@ def mostrar_operacion(df_operacion):
     else:
         st.info("No hay gastos operacionales registrados")
 
-# ---- Funciones para cada pestaña ----
+# ---- Funciones para cada pestaña (completas) ----
 
 # 1. Prospectos - SOLUCIÓN DEFINITIVA
 def mostrar_prospectos(df_prospectos, df_polizas):
