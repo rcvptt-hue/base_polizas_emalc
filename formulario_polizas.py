@@ -22,6 +22,12 @@ import numpy as np
 import io
 import matplotlib.pyplot as plt
 import warnings
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+import tempfile
 warnings.filterwarnings('ignore')
 
 # ================================
@@ -797,69 +803,100 @@ def mostrar_asesoria_axa():
     with tab5:
         st.subheader("📊 Reporte Financiero")
         
-        # Botón para generar reporte
-        if st.button("📈 Generar Reporte Completo", type="primary", use_container_width=True):
-            with st.spinner("Generando reporte financiero..."):
-                # Calcular métricas
-                metricas = calcular_metricas_financieras()
-                
-                if metricas:
-                    # Mostrar resumen
-                    st.success("✅ Reporte generado exitosamente")
+        # Botones de acción en la parte superior
+        col_btn1, col_btn2 = st.columns(2)
+        
+        with col_btn1:
+            # Botón para borrar todos los datos del formulario
+            if st.button("🗑️ Borrar Todos los Datos", type="secondary", use_container_width=True):
+                st.session_state.asesoria_data = {
+                    'informacion_personal': {},
+                    'informacion_familiar': {},
+                    'informacion_financiera': {},
+                    'objetivos': {}
+                }
+                st.session_state.metricas_financieras = None
+                st.success("✅ Todos los datos del formulario han sido borrados")
+                st.rerun()
+        
+        with col_btn2:
+            # Botón para generar reporte
+            if st.button("📈 Generar Reporte Completo", type="primary", use_container_width=True):
+                with st.spinner("Generando reporte financiero..."):
+                    # Calcular métricas
+                    metricas = calcular_metricas_financieras()
                     
-                    # Crear columnas para métricas clave
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.metric("Capacidad de Ahorro Mensual", f"${metricas['ahorro_mensual']:,.2f}")
-                    with col2:
-                        st.metric("Porcentaje de Ahorro", f"{metricas['porcentaje_ahorro']:.1f}%")
-                    with col3:
-                        st.metric("Fondo Emergencia Recomendado", f"${metricas['fondo_emergencia_recomendado']:,.2f}")
-                    
-                    # Mostrar gráficos
-                    st.subheader("📊 Gráficos Financieros")
-                    
-                    # Gráfico 1: Distribución financiera actual
-                    fig1 = crear_grafico_pastel_gastos(metricas)
-                    if fig1:
-                        st.pyplot(fig1)
-                        plt.close(fig1)
-                    
-                    # Gráfico 2: Metas financieras
-                    fig2 = crear_grafico_barras_metas(metricas)
-                    if fig2:
-                        st.pyplot(fig2)
-                        plt.close(fig2)
-                    
-                    # Gráfico 3: Comparación de ahorro
-                    fig3 = crear_grafico_ahorro(metricas)
-                    if fig3:
-                        st.pyplot(fig3)
-                        plt.close(fig3)
-                    
-                    # Generar archivo Excel para descarga
-                    excel_buffer = generar_excel_reporte(metricas)
-                    
-                    # Botón para descargar Excel
-                    if excel_buffer:
-                        nombre_cliente = st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')
-                        # Limpiar nombre para el archivo
-                        nombre_archivo = f"Reporte_Financiero_{nombre_cliente.replace(' ', '_')}.xlsx"
+                    if metricas:
+                        # Mostrar resumen
+                        st.success("✅ Reporte generado exitosamente")
                         
-                        st.download_button(
-                            label="📥 Descargar Reporte en Excel",
-                            data=excel_buffer,
-                            file_name=nombre_archivo,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                    
-                    # Botón para descargar PDF (simulado)
-                    if st.button("📄 Generar PDF del Reporte", use_container_width=True):
-                        st.info("La generación de PDF estará disponible en la próxima actualización")
-                else:
-                    st.error("❌ Error al calcular las métricas financieras")
+                        # Crear columnas para métricas clave
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("Capacidad de Ahorro Mensual", f"${metricas['ahorro_mensual']:,.2f}")
+                        with col2:
+                            st.metric("Porcentaje de Ahorro", f"{metricas['porcentaje_ahorro']:.1f}%")
+                        with col3:
+                            st.metric("Fondo Emergencia Recomendado", f"${metricas['fondo_emergencia_recomendado']:,.2f}")
+                        
+                        # Mostrar gráficos
+                        st.subheader("📊 Gráficos Financieros")
+                        
+                        # Gráfico 1: Distribución financiera actual
+                        fig1 = crear_grafico_pastel_gastos(metricas)
+                        if fig1:
+                            st.pyplot(fig1)
+                            plt.close(fig1)
+                        
+                        # Gráfico 2: Metas financieras
+                        fig2 = crear_grafico_barras_metas(metricas)
+                        if fig2:
+                            st.pyplot(fig2)
+                            plt.close(fig2)
+                        
+                        # Gráfico 3: Comparación de ahorro
+                        fig3 = crear_grafico_ahorro(metricas)
+                        if fig3:
+                            st.pyplot(fig3)
+                            plt.close(fig3)
+                        
+                        # Generar archivo Excel para descarga
+                        excel_buffer = generar_excel_reporte(metricas)
+                        
+                        # Botón para descargar Excel
+                        if excel_buffer:
+                            nombre_cliente = st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')
+                            # Limpiar nombre para el archivo
+                            nombre_archivo = f"Reporte_Financiero_{nombre_cliente.replace(' ', '_')}.xlsx"
+                            
+                            st.download_button(
+                                label="📥 Descargar Reporte en Excel",
+                                data=excel_buffer,
+                                file_name=nombre_archivo,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                        
+                        # Botón para descargar PDF (REAL)
+                        if st.button("📄 Generar y Descargar PDF", use_container_width=True):
+                            with st.spinner("Generando PDF..."):
+                                pdf_buffer = generar_pdf_reporte(metricas)
+                                if pdf_buffer:
+                                    nombre_cliente = st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')
+                                    nombre_archivo = f"Reporte_Financiero_{nombre_cliente.replace(' ', '_')}.pdf"
+                                    
+                                    st.download_button(
+                                        label="📥 Descargar PDF",
+                                        data=pdf_buffer,
+                                        file_name=nombre_archivo,
+                                        mime="application/pdf",
+                                        use_container_width=True
+                                    )
+                                else:
+                                    st.error("❌ Error al generar el PDF")
+                    else:
+                        st.error("❌ Error al calcular las métricas financieras")
         
         # Mostrar datos actuales si ya existen
         if st.session_state.metricas_financieras:
@@ -1275,6 +1312,224 @@ def generar_excel_reporte(metricas):
         
     except Exception as e:
         st.error(f"Error al generar Excel: {str(e)}")
+        import traceback
+        st.error(f"Detalle del error: {traceback.format_exc()}")
+        return None
+
+def generar_pdf_reporte(metricas):
+    """Genera un archivo PDF con el reporte financiero"""
+    try:
+        # Crear un buffer en memoria para el PDF
+        buffer = io.BytesIO()
+        
+        # Crear el documento PDF
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=72,
+            leftMargin=72,
+            topMargin=72,
+            bottomMargin=72
+        )
+        
+        # Estilos
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor(COLORES_AXA['azul_principal']),
+            spaceAfter=30
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor(COLORES_AXA['verde_oscuro']),
+            spaceAfter=15
+        )
+        
+        normal_style = styles['Normal']
+        
+        # Contenido del PDF
+        story = []
+        
+        # Título principal
+        nombre_cliente = st.session_state.asesoria_data['informacion_personal'].get('nombre', 'Cliente')
+        story.append(Paragraph(f"REPORTE FINANCIERO - {nombre_cliente.upper()}", title_style))
+        story.append(Paragraph(f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}", normal_style))
+        story.append(Spacer(1, 20))
+        
+        # Información Personal
+        story.append(Paragraph("INFORMACIÓN PERSONAL", subtitle_style))
+        
+        datos_personales = st.session_state.asesoria_data['informacion_personal']
+        datos_familiares = st.session_state.asesoria_data['informacion_familiar']
+        
+        personal_data = [
+            ["Nombre:", datos_personales.get('nombre', 'No especificado')],
+            ["Teléfono:", datos_personales.get('telefono', 'No especificado')],
+            ["Email:", datos_personales.get('email', 'No especificado')],
+            ["Ocupación:", datos_personales.get('ocupacion', 'No especificado')],
+            ["Agente:", datos_personales.get('agente', 'No especificado')],
+            ["Estado Civil:", datos_familiares.get('estado_civil', 'No especificado')],
+            ["Fecha Nacimiento:", datos_familiares.get('fecha_nacimiento', 'No especificado')],
+            ["Edad:", str(datos_familiares.get('edad', 'No especificado'))],
+            ["Hijos:", str(datos_familiares.get('num_hijos', 0))]
+        ]
+        
+        personal_table = Table(personal_data, colWidths=[2*inch, 4*inch])
+        personal_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor(COLORES_AXA['azul_claro'])),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        
+        story.append(personal_table)
+        story.append(Spacer(1, 20))
+        
+        # Información Financiera
+        story.append(Paragraph("INFORMACIÓN FINANCIERA", subtitle_style))
+        
+        datos_financieros = st.session_state.asesoria_data['informacion_financiera']
+        financial_data = [
+            ["Ingreso Mensual Neto:", f"${datos_financieros.get('ingreso_mensual', 0):,.2f}"],
+            ["Gastos Mensuales Totales:", f"${datos_financieros.get('gastos_mensuales', 0):,.2f}"],
+            ["Ahorro Actual:", f"${datos_financieros.get('ahorro_actual', 0):,.2f}"],
+            ["Deudas Totales:", f"${datos_financieros.get('deudas_totales', 0):,.2f}"],
+            ["Capacidad de Ahorro Mensual:", f"${metricas['ahorro_mensual']:,.2f}"],
+            ["Porcentaje de Ahorro:", f"{metricas['porcentaje_ahorro']:.1f}%"],
+            ["Fondo Emergencia Recomendado:", f"${metricas['fondo_emergencia_recomendado']:,.2f}"]
+        ]
+        
+        financial_table = Table(financial_data, colWidths=[2.5*inch, 3.5*inch])
+        financial_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor(COLORES_AXA['verde_agua'])),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        
+        story.append(financial_table)
+        story.append(Spacer(1, 20))
+        
+        # Metas Financieras
+        story.append(Paragraph("METAS FINANCIERAS", subtitle_style))
+        
+        objetivos = st.session_state.asesoria_data['objetivos']
+        metas_data = [
+            ["Categoría", "Monto Requerido", "Descripción"],
+            ["Protección Familiar", f"${metricas['necesidad_proteccion']:,.2f}", 
+             f"{objetivos.get('meses_proteccion_familiar', 6)} meses de gastos"],
+            ["Retiro", f"${metricas['necesidad_retiro_total']:,.2f}", 
+             f"Ingreso mensual deseado: ${objetivos.get('ingreso_retiro_mensual', 0):,.2f}"],
+            ["Educación", f"${metricas['necesidad_educacion']:,.2f}", 
+             f"Para {datos_familiares.get('num_hijos', 0)} hijo(s)"],
+            ["Proyecto Futuro", f"${metricas['necesidad_proyecto']:,.2f}", 
+             objetivos.get('proyecto_futuro', 'No especificado')]
+        ]
+        
+        metas_table = Table(metas_data, colWidths=[1.5*inch, 2*inch, 3*inch])
+        metas_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(COLORES_AXA['azul_principal'])),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('BACKGROUND', (0, 1), (0, -1), colors.HexColor(COLORES_AXA['azul_claro'])),
+            ('BACKGROUND', (1, 1), (1, -1), colors.HexColor(COLORES_AXA['verde_agua'])),
+            ('BACKGROUND', (2, 1), (2, -1), colors.HexColor('#f0f0f0'))
+        ]))
+        
+        story.append(metas_table)
+        story.append(Spacer(1, 20))
+        
+        # Plan de Ahorro
+        story.append(Paragraph("PLAN DE AHORRO RECOMENDADO", subtitle_style))
+        
+        años_hasta_retiro = metricas['años_hasta_retiro']
+        plan_data = [
+            ["Recomendación", "Monto Mensual", "Plazo", "Prioridad"],
+            ["Fondo de Emergencia", f"${metricas['fondo_emergencia_recomendado']/12:,.2f}", "12 meses", "Alta"],
+            ["Protección Familiar", f"${metricas['necesidad_proteccion']/24:,.2f}" if metricas['necesidad_proteccion'] > 0 else "$0.00", "24 meses", "Alta"],
+            ["Retiro", f"${metricas['necesidad_retiro_total']/(años_hasta_retiro*12):,.2f}" if años_hasta_retiro > 0 else "$0.00", f"{años_hasta_retiro*12} meses", "Media"],
+            ["Educación", f"${metricas['necesidad_educacion']/120:,.2f}" if metricas['necesidad_educacion'] > 0 else "$0.00", "120 meses", "Media"],
+            ["Proyecto", f"${metricas['necesidad_proyecto']/60:,.2f}" if metricas['necesidad_proyecto'] > 0 else "$0.00", "60 meses", "Baja"]
+        ]
+        
+        plan_table = Table(plan_data, colWidths=[1.5*inch, 1.5*inch, 1.2*inch, 1.2*inch])
+        plan_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(COLORES_AXA['verde_oscuro'])),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('BACKGROUND', (3, 1), (3, 1), colors.HexColor('#ffcccc')),  # Alta - rojo claro
+            ('BACKGROUND', (3, 2), (3, 2), colors.HexColor('#ffcccc')),  # Alta - rojo claro
+            ('BACKGROUND', (3, 3), (3, 3), colors.HexColor('#ffffcc')),  # Media - amarillo claro
+            ('BACKGROUND', (3, 4), (3, 4), colors.HexColor('#ffffcc')),  # Media - amarillo claro
+            ('BACKGROUND', (3, 5), (3, 5), colors.HexColor('#ccffcc'))   # Baja - verde claro
+        ]))
+        
+        story.append(plan_table)
+        story.append(Spacer(1, 30))
+        
+        # Recomendaciones finales
+        story.append(Paragraph("RECOMENDACIONES GENERALES", subtitle_style))
+        
+        recomendaciones = [
+            "1. Establecer un fondo de emergencia equivalente a 6 meses de gastos",
+            "2. Considerar un seguro de vida para proteger a la familia",
+            "3. Iniciar un plan de ahorro para el retiro lo antes posible",
+            "4. Diversificar las inversiones para reducir riesgos",
+            "5. Revisar periódicamente el plan financiero (al menos cada 6 meses)",
+            "6. Considerar instrumentos de inversión acordes al perfil de riesgo"
+        ]
+        
+        for rec in recomendaciones:
+            story.append(Paragraph(rec, normal_style))
+            story.append(Spacer(1, 5))
+        
+        story.append(Spacer(1, 20))
+        
+        # Pie de página
+        footer = Paragraph(
+            f"Reporte generado por Sistema de Asesoría Financiera Rizkora • {datetime.now().strftime('%d/%m/%Y')} • Página 1 de 1",
+            ParagraphStyle(
+                'Footer',
+                parent=styles['Normal'],
+                fontSize=8,
+                textColor=colors.grey,
+                alignment=1
+            )
+        )
+        story.append(footer)
+        
+        # Construir el PDF
+        doc.build(story)
+        
+        # Obtener los datos del buffer
+        buffer.seek(0)
+        return buffer
+        
+    except Exception as e:
+        st.error(f"Error al generar PDF: {str(e)}")
         import traceback
         st.error(f"Detalle del error: {traceback.format_exc()}")
         return None
@@ -3283,4 +3538,5 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
