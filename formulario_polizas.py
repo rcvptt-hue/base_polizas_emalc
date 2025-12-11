@@ -1022,6 +1022,7 @@ def calcular_metricas_financieras():
         ahorro_recomendado_10 = ingreso_anual * 0.10
         ahorro_recomendado_7 = ingreso_mensual * 0.07 * 12
         
+        # Asegurarse de incluir TODAS las métricas necesarias
         metricas = {
             'ingreso_anual': ingreso_anual,
             'gastos_anuales': gastos_anuales,
@@ -1033,6 +1034,7 @@ def calcular_metricas_financieras():
             'necesidad_retiro_total': necesidad_retiro_total,
             'necesidad_educacion': necesidad_educacion,
             'necesidad_proteccion': necesidad_proteccion,
+            'necesidad_proyecto': necesidad_proyecto,  # ¡IMPORTANTE! Esta es la clave faltante
             'ahorro_recomendado_10': ahorro_recomendado_10,
             'ahorro_recomendado_7': ahorro_recomendado_7,
             'metas': metas,
@@ -1323,6 +1325,25 @@ def generar_excel_reporte(metricas):
 def generar_pdf_reporte(metricas):
     """Genera un archivo PDF con el reporte financiero"""
     try:
+        # Verificar que todas las claves necesarias existan
+        keys_required = [
+            'necesidad_proyecto', 'necesidad_proteccion', 
+            'necesidad_retiro_total', 'necesidad_educacion'
+        ]
+        
+        for key in keys_required:
+            if key not in metricas:
+                metricas[key] = 0.0  # Valor por defecto
+        
+        # Verificar que 'metas' exista
+        if 'metas' not in metricas:
+            metricas['metas'] = {
+                'Protección': metricas.get('necesidad_proteccion', 0),
+                'Retiro': metricas.get('necesidad_retiro_total', 0),
+                'Educación': metricas.get('necesidad_educacion', 0),
+                'Proyecto': metricas.get('necesidad_proyecto', 0)
+            }
+        
         # Crear un buffer en memoria para el PDF
         buffer = io.BytesIO()
         
@@ -1409,9 +1430,9 @@ def generar_pdf_reporte(metricas):
             ["Gastos Mensuales Totales:", f"${datos_financieros.get('gastos_mensuales', 0):,.2f}"],
             ["Ahorro Actual:", f"${datos_financieros.get('ahorro_actual', 0):,.2f}"],
             ["Deudas Totales:", f"${datos_financieros.get('deudas_totales', 0):,.2f}"],
-            ["Capacidad de Ahorro Mensual:", f"${metricas['ahorro_mensual']:,.2f}"],
-            ["Porcentaje de Ahorro:", f"{metricas['porcentaje_ahorro']:.1f}%"],
-            ["Fondo Emergencia Recomendado:", f"${metricas['fondo_emergencia_recomendado']:,.2f}"]
+            ["Capacidad de Ahorro Mensual:", f"${metricas.get('ahorro_mensual', 0):,.2f}"],
+            ["Porcentaje de Ahorro:", f"{metricas.get('porcentaje_ahorro', 0):.1f}%"],
+            ["Fondo Emergencia Recomendado:", f"${metricas.get('fondo_emergencia_recomendado', 0):,.2f}"]
         ]
         
         financial_table = Table(financial_data, colWidths=[2.5*inch, 3.5*inch])
@@ -1429,19 +1450,19 @@ def generar_pdf_reporte(metricas):
         story.append(financial_table)
         story.append(Spacer(1, 20))
         
-        # Metas Financieras
+        # Metas Financieras - Usar metricas['metas'] en lugar de claves individuales
         story.append(Paragraph("METAS FINANCIERAS", subtitle_style))
         
         objetivos = st.session_state.asesoria_data['objetivos']
         metas_data = [
             ["Categoría", "Monto Requerido", "Descripción"],
-            ["Protección Familiar", f"${metricas['necesidad_proteccion']:,.2f}", 
+            ["Protección Familiar", f"${metricas['metas']['Protección']:,.2f}", 
              f"{objetivos.get('meses_proteccion_familiar', 6)} meses de gastos"],
-            ["Retiro", f"${metricas['necesidad_retiro_total']:,.2f}", 
+            ["Retiro", f"${metricas['metas']['Retiro']:,.2f}", 
              f"Ingreso mensual deseado: ${objetivos.get('ingreso_retiro_mensual', 0):,.2f}"],
-            ["Educación", f"${metricas['necesidad_educacion']:,.2f}", 
+            ["Educación", f"${metricas['metas']['Educación']:,.2f}", 
              f"Para {datos_familiares.get('num_hijos', 0)} hijo(s)"],
-            ["Proyecto Futuro", f"${metricas['necesidad_proyecto']:,.2f}", 
+            ["Proyecto Futuro", f"${metricas['metas']['Proyecto']:,.2f}", 
              objetivos.get('proyecto_futuro', 'No especificado')]
         ]
         
@@ -1463,17 +1484,17 @@ def generar_pdf_reporte(metricas):
         story.append(metas_table)
         story.append(Spacer(1, 20))
         
-        # Plan de Ahorro
+        # Plan de Ahorro - Usar claves individuales con valores por defecto
         story.append(Paragraph("PLAN DE AHORRO RECOMENDADO", subtitle_style))
         
-        años_hasta_retiro = metricas['años_hasta_retiro']
+        años_hasta_retiro = metricas.get('años_hasta_retiro', 0)
         plan_data = [
             ["Recomendación", "Monto Mensual", "Plazo", "Prioridad"],
-            ["Fondo de Emergencia", f"${metricas['fondo_emergencia_recomendado']/12:,.2f}", "12 meses", "Alta"],
-            ["Protección Familiar", f"${metricas['necesidad_proteccion']/24:,.2f}" if metricas['necesidad_proteccion'] > 0 else "$0.00", "24 meses", "Alta"],
-            ["Retiro", f"${metricas['necesidad_retiro_total']/(años_hasta_retiro*12):,.2f}" if años_hasta_retiro > 0 else "$0.00", f"{años_hasta_retiro*12} meses", "Media"],
-            ["Educación", f"${metricas['necesidad_educacion']/120:,.2f}" if metricas['necesidad_educacion'] > 0 else "$0.00", "120 meses", "Media"],
-            ["Proyecto", f"${metricas['necesidad_proyecto']/60:,.2f}" if metricas['necesidad_proyecto'] > 0 else "$0.00", "60 meses", "Baja"]
+            ["Fondo de Emergencia", f"${metricas.get('fondo_emergencia_recomendado', 0)/12:,.2f}", "12 meses", "Alta"],
+            ["Protección Familiar", f"${metricas.get('necesidad_proteccion', 0)/24:,.2f}" if metricas.get('necesidad_proteccion', 0) > 0 else "$0.00", "24 meses", "Alta"],
+            ["Retiro", f"${metricas.get('necesidad_retiro_total', 0)/(años_hasta_retiro*12):,.2f}" if años_hasta_retiro > 0 else "$0.00", f"{años_hasta_retiro*12} meses", "Media"],
+            ["Educación", f"${metricas.get('necesidad_educacion', 0)/120:,.2f}" if metricas.get('necesidad_educacion', 0) > 0 else "$0.00", "120 meses", "Media"],
+            ["Proyecto", f"${metricas.get('necesidad_proyecto', 0)/60:,.2f}" if metricas.get('necesidad_proyecto', 0) > 0 else "$0.00", "60 meses", "Baja"]
         ]
         
         plan_table = Table(plan_data, colWidths=[1.5*inch, 1.5*inch, 1.2*inch, 1.2*inch])
@@ -3544,6 +3565,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
