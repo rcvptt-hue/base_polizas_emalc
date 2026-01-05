@@ -538,26 +538,30 @@ def mostrar_asesoria_axa():
             nombre = st.session_state.asesoria_data['informacion_personal'].get('nombre', '')
             st.session_state.asesoria_data['informacion_personal']['nombre'] = st.text_input(
                 "Nombre completo*", 
-                value=nombre
+                value=nombre,
+                placeholder="Ingrese nombre completo"
             )
             
             telefono = st.session_state.asesoria_data['informacion_personal'].get('telefono', '')
             st.session_state.asesoria_data['informacion_personal']['telefono'] = st.text_input(
                 "Teléfono*", 
-                value=telefono
+                value=telefono,
+                placeholder="Ingrese teléfono"
             )
             
             email = st.session_state.asesoria_data['informacion_personal'].get('email', '')
             st.session_state.asesoria_data['informacion_personal']['email'] = st.text_input(
                 "Email*", 
-                value=email
+                value=email,
+                placeholder="Ingrese correo electrónico"
             )
             
         with col2:
             ocupacion = st.session_state.asesoria_data['informacion_personal'].get('ocupacion', '')
             st.session_state.asesoria_data['informacion_personal']['ocupacion'] = st.text_input(
                 "Ocupación*", 
-                value=ocupacion
+                value=ocupacion,
+                placeholder="Ingrese ocupación"
             )
             
             fumador = st.session_state.asesoria_data['informacion_personal'].get('fumador', '')
@@ -571,7 +575,8 @@ def mostrar_asesoria_axa():
             agente = st.session_state.asesoria_data['informacion_personal'].get('agente', '')
             st.session_state.asesoria_data['informacion_personal']['agente'] = st.text_input(
                 "Nombre del agente*", 
-                value=agente
+                value=agente,
+                placeholder="Ingrese nombre del agente"
             )
     
     with tab2:
@@ -608,14 +613,16 @@ def mostrar_asesoria_axa():
             hobbie = st.session_state.asesoria_data['informacion_familiar'].get('hobbie', '')
             st.session_state.asesoria_data['informacion_familiar']['hobbie'] = st.text_input(
                 "¿Tienes algún hobbie? (opcional)", 
-                value=hobbie
+                value=hobbie,
+                placeholder="Ingrese hobbies"
             )
             
         with col2:
             nombre_pareja = st.session_state.asesoria_data['informacion_familiar'].get('nombre_pareja', '')
             st.session_state.asesoria_data['informacion_familiar']['nombre_pareja'] = st.text_input(
                 "Nombre y edad de tu esposo(a)/pareja (opcional)", 
-                value=nombre_pareja
+                value=nombre_pareja,
+                placeholder="Nombre y edad"
             )
             
             # Gestión de hijos
@@ -638,14 +645,16 @@ def mostrar_asesoria_axa():
                     hijos[i]['nombre'] = st.text_input(
                         f"Nombre hijo(a) {i+1}", 
                         value=hijos[i]['nombre'],
-                        key=nombre_key
+                        key=nombre_key,
+                        placeholder="Nombre"
                     )
                 with col_hijo2:
                     edad_key = f"hijo_{i}_edad"
                     hijos[i]['edad'] = st.text_input(
                         f"Edad hijo(a) {i+1}", 
                         value=hijos[i]['edad'],
-                        key=edad_key
+                        key=edad_key,
+                        placeholder="Edad"
                     )
             st.session_state.asesoria_data['informacion_familiar']['hijos'] = hijos
     
@@ -799,7 +808,8 @@ def mostrar_asesoria_axa():
             proyecto_futuro = st.session_state.asesoria_data['objetivos'].get('proyecto_futuro', '')
             st.session_state.asesoria_data['objetivos']['proyecto_futuro'] = st.text_input(
                 "¿Tienes algún proyecto a mediano/largo plazo? (ej: casa, negocio)", 
-                value=proyecto_futuro
+                value=proyecto_futuro,
+                placeholder="Describa su proyecto"
             )
             
             if st.session_state.asesoria_data['objetivos'].get('proyecto_futuro'):
@@ -1681,7 +1691,7 @@ def mostrar_operacion(df_operacion):
 
         with col1:
             # Fecha
-            fecha_val = st.session_state.operacion_data.get("Fecha", fecha_actual())
+            fecha_val = st.session_state.operacion_data.get("Fecha", "")
             fecha = st.text_input(
                 "Fecha (dd/mm/yyyy)*", 
                 value=fecha_val,
@@ -2029,7 +2039,8 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             nombre_razon = st.text_input(
                 "Nombre/Razón Social*", 
                 value=st.session_state.prospecto_data.get("Nombre/Razón Social", ""),
-                key=f"nombre_razon_{st.session_state.form_key}"
+                key=f"nombre_razon_{st.session_state.form_key}",
+                placeholder="Ingrese nombre o razón social"
             )
 
             # Fecha Nacimiento
@@ -2044,21 +2055,24 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             rfc = st.text_input(
                 "RFC", 
                 value=st.session_state.prospecto_data.get("RFC", ""),
-                key=f"rfc_{st.session_state.form_key}"
+                key=f"rfc_{st.session_state.form_key}",
+                placeholder="Ingrese RFC"
             )
 
             # Teléfono
             telefono = st.text_input(
                 "Teléfono", 
                 value=st.session_state.prospecto_data.get("Teléfono", ""),
-                key=f"telefono_{st.session_state.form_key}"
+                key=f"telefono_{st.session_state.form_key}",
+                placeholder="Ingrese teléfono"
             )
 
             # Correo
             correo = st.text_input(
                 "Correo", 
                 value=st.session_state.prospecto_data.get("Correo", ""),
-                key=f"correo_{st.session_state.form_key}"
+                key=f"correo_{st.session_state.form_key}",
+                placeholder="Ingrese correo electrónico"
             )
 
             # Notas - AQUÍ ESTÁ LA CLAVE: usar directamente de prospecto_data
@@ -2085,7 +2099,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             # Fecha Registro
             fecha_registro = st.text_input(
                 "Fecha Registro*", 
-                value=st.session_state.prospecto_data.get("Fecha Registro", fecha_actual()),
+                value=st.session_state.prospecto_data.get("Fecha Registro", ""),
                 placeholder="dd/mm/yyyy",
                 key=f"fecha_registro_{st.session_state.form_key}"
             )
@@ -2305,7 +2319,7 @@ def mostrar_seguimiento(df_prospectos, df_seguimiento):
 
                 with col1:
                     nueva_fecha_contacto = st.text_input("Nueva Fecha de Contacto (dd/mm/yyyy)*", 
-                                                       value=fecha_actual(),
+                                                       value="",
                                                        placeholder="dd/mm/yyyy",
                                                        key="nueva_fecha_contacto")
                     estatus = st.selectbox("Estatus", OPCIONES_ESTATUS_SEGUIMIENTO, key="estatus_seguimiento")
@@ -2382,7 +2396,7 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                 with col1:
                     st.text_input("Tipo Persona", value=prospecto_data.get("Tipo Persona", ""), key="registro_tipo", disabled=True)
                     st.text_input("Nombre/Razón Social", value=prospecto_data.get("Nombre/Razón Social", ""), key="registro_nombre", disabled=True)
-                    no_poliza = st.text_input("No. Póliza*", key="registro_numero")
+                    no_poliza = st.text_input("No. Póliza*", key="registro_numero", placeholder="Ingrese número de póliza")
                     producto_poliza = st.selectbox("Producto", OPCIONES_PRODUCTO, 
                                           index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
                                           if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
@@ -2400,14 +2414,14 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                 with col2:
                     banco = st.selectbox("Banco", OPCIONES_BANCO, key="registro_banco")
                     periodicidad = st.selectbox("Periodicidad", ["CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
-                    prima_total_emitida = st.text_input("Prima Total Emitida", key="registro_prima_total")
-                    prima_neta = st.text_input("Prima Neta", key="registro_prima_neta")
-                    primer_pago = st.text_input("Primer Pago", key="registro_primer_pago")
-                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="registro_pagos_subsecuentes")
+                    prima_total_emitida = st.text_input("Prima Total Emitida", key="registro_prima_total", placeholder="Ingrese monto")
+                    prima_neta = st.text_input("Prima Neta", key="registro_prima_neta", placeholder="Ingrese monto")
+                    primer_pago = st.text_input("Primer Pago", key="registro_primer_pago", placeholder="Ingrese monto")
+                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="registro_pagos_subsecuentes", placeholder="Ingrese monto")
                     aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="registro_aseguradora")
-                    comision_porcentaje = st.text_input("% Comisión", key="registro_comision_pct")
+                    comision_porcentaje = st.text_input("% Comisión", key="registro_comision_pct", placeholder="Ej: 10.5")
                     estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="registro_estado")
-                    contacto = st.text_input("Contacto", key="registro_contacto")
+                    contacto = st.text_input("Contacto", key="registro_contacto", placeholder="Persona de contacto")
                     direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
                                             value=prospecto_data.get("Dirección", ""),
                                             placeholder="Ej: Calle 123, CDMX, 03100",
@@ -2742,7 +2756,7 @@ def mostrar_consulta_clientes(df_polizas):
                         else:
                             st.error("❌ Error al actualizar el estado")
 
-# 5. Póliza Nueva (para clientes existentes)
+# 5. Póliza Nueva (para clientes existentes) - CON VALIDACIÓN MEJORADA
 def mostrar_poliza_nueva(df_prospectos, df_polizas):
     st.header("🆕 Póliza Nueva para Cliente Existente")
 
@@ -2771,62 +2785,139 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    no_poliza = st.text_input("No. Póliza*", key="nueva_poliza_numero")
-                    producto = st.selectbox("Producto", OPCIONES_PRODUCTO, key="nueva_poliza_producto")
+                    no_poliza = st.text_input("No. Póliza*", 
+                                            placeholder="Ingrese el número de póliza",
+                                            key="nueva_poliza_numero")
+                    producto = st.selectbox("Producto*", OPCIONES_PRODUCTO, 
+                                          key="nueva_poliza_producto")
                     inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
                                                   placeholder="dd/mm/yyyy",
                                                   key="nueva_poliza_inicio")
                     fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
                                                placeholder="dd/mm/yyyy",
                                                key="nueva_poliza_fin")
-                    forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="nueva_poliza_pago")
-                    banco = st.selectbox("Banco", OPCIONES_BANCO, key="nueva_poliza_banco")
-                    periodicidad = st.selectbox("Periodicidad", ["CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="nueva_poliza_periodicidad")
-                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="nueva_poliza_moneda")
+                    forma_pago = st.selectbox("Forma de Pago*", OPCIONES_PAGO, 
+                                            key="nueva_poliza_pago")
+                    banco = st.selectbox("Banco*", OPCIONES_BANCO, 
+                                       key="nueva_poliza_banco")
+                    periodicidad = st.selectbox("Periodicidad*", ["CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], 
+                                              key="nueva_poliza_periodicidad")
+                    moneda = st.selectbox("Moneda*", OPCIONES_MONEDA, 
+                                        key="nueva_poliza_moneda")
 
                 with col2:
-                    prima_total_emitida = st.text_input("Prima Total Emitida", key="nueva_poliza_prima_total")
-                    prima_neta = st.text_input("Prima Neta", key="nueva_poliza_prima_neta")
-                    primer_pago = st.text_input("Primer Pago", key="nueva_poliza_primer_pago")
-                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="nueva_poliza_pagos_subsecuentes")
-                    aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="nueva_poliza_aseguradora")
-                    comision_porcentaje = st.text_input("% Comisión", key="nueva_poliza_comision_pct")
-                    estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="nueva_poliza_estado")
-                    contacto = st.text_input("Contacto", key="nueva_poliza_contacto")
-                    direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
+                    prima_total_emitida = st.text_input("Prima Total Emitida*", 
+                                                      placeholder="Ej: 15000.00",
+                                                      key="nueva_poliza_prima_total")
+                    prima_neta = st.text_input("Prima Neta*", 
+                                             placeholder="Ej: 14000.00",
+                                             key="nueva_poliza_prima_neta")
+                    primer_pago = st.text_input("Primer Pago*", 
+                                              placeholder="Ej: 5000.00",
+                                              key="nueva_poliza_primer_pago")
+                    pagos_subsecuentes = st.text_input("Pagos Subsecuentes*", 
+                                                      placeholder="Ej: 1000.00",
+                                                      key="nueva_poliza_pagos_subsecuentes")
+                    aseguradora = st.selectbox("Aseguradora*", OPCIONES_ASEG, 
+                                             key="nueva_poliza_aseguradora")
+                    comision_porcentaje = st.text_input("% Comisión*", 
+                                                      placeholder="Ej: 10.5",
+                                                      key="nueva_poliza_comision_pct")
+                    estado = st.selectbox("Estado*", OPCIONES_ESTADO_POLIZA, 
+                                        key="nueva_poliza_estado")
+                    contacto = st.text_input("Contacto (opcional)", 
+                                           placeholder="Persona de contacto",
+                                           key="nueva_poliza_contacto")
+                    direccion = st.text_input("Dirección (opcional, indicar ciudad y CP)", 
                                             placeholder="Ej: Calle 123, CDMX, 03100",
                                             key="nueva_poliza_direccion")
-                    referenciador = st.text_input("Referenciador", 
+                    referenciador = st.text_input("Referenciador*", 
                                                 placeholder="Origen del cliente/promoción",
                                                 key="nueva_poliza_referenciador")
-                    clave_emision = st.selectbox("Clave de Emisión", ["Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"], key="nueva_poliza_clave_emision")
+                    clave_emision = st.selectbox("Clave de Emisión*", 
+                                               ["Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"], 
+                                               key="nueva_poliza_clave_emision")
 
-                # Validar fechas obligatorias
-                fecha_errors = []
+                # Lista de campos obligatorios (todos excepto Contacto y Dirección)
+                campos_obligatorios = [
+                    ("No. Póliza", no_poliza),
+                    ("Producto", producto),
+                    ("Inicio Vigencia", inicio_vigencia),
+                    ("Fin Vigencia", fin_vigencia),
+                    ("Forma de Pago", forma_pago),
+                    ("Banco", banco),
+                    ("Periodicidad", periodicidad),
+                    ("Moneda", moneda),
+                    ("Prima Total Emitida", prima_total_emitida),
+                    ("Prima Neta", prima_neta),
+                    ("Primer Pago", primer_pago),
+                    ("Pagos Subsecuentes", pagos_subsecuentes),
+                    ("Aseguradora", aseguradora),
+                    ("% Comisión", comision_porcentaje),
+                    ("Estado", estado),
+                    ("Referenciador", referenciador),
+                    ("Clave de Emisión", clave_emision)
+                ]
+
+                errores = []
+
+                # Validar fechas
                 if inicio_vigencia:
                     valido, error = validar_fecha(inicio_vigencia)
                     if not valido:
-                        fecha_errors.append(f"Inicio Vigencia: {error}")
+                        errores.append(f"Inicio Vigencia: {error}")
                 else:
-                    fecha_errors.append("Inicio Vigencia es obligatorio")
+                    errores.append("Inicio Vigencia es obligatorio")
 
                 if fin_vigencia:
                     valido, error = validar_fecha(fin_vigencia)
                     if not valido:
-                        fecha_errors.append(f"Fin Vigencia: {error}")
+                        errores.append(f"Fin Vigencia: {error}")
                 else:
-                    fecha_errors.append("Fin Vigencia es obligatorio")
+                    errores.append("Fin Vigencia es obligatorio")
 
-                if fecha_errors:
-                    for error in fecha_errors:
-                        st.error(error)
+                # Validar que los campos obligatorios no estén vacíos
+                for campo_nombre, campo_valor in campos_obligatorios:
+                    if not campo_valor or str(campo_valor).strip() == "":
+                        errores.append(f"{campo_nombre} es obligatorio")
+
+                # Validar que los campos numéricos tengan valores válidos
+                try:
+                    if prima_total_emitida and prima_total_emitida.strip():
+                        float(prima_total_emitida.replace(',', ''))
+                except ValueError:
+                    errores.append("Prima Total Emitida debe ser un número válido")
+                
+                try:
+                    if prima_neta and prima_neta.strip():
+                        float(prima_neta.replace(',', ''))
+                except ValueError:
+                    errores.append("Prima Neta debe ser un número válido")
+                
+                try:
+                    if primer_pago and primer_pago.strip():
+                        float(primer_pago.replace(',', ''))
+                except ValueError:
+                    errores.append("Primer Pago debe ser un número válido")
+                
+                try:
+                    if pagos_subsecuentes and pagos_subsecuentes.strip():
+                        float(pagos_subsecuentes.replace(',', ''))
+                except ValueError:
+                    errores.append("Pagos Subsecuentes debe ser un número válido")
+                
+                try:
+                    if comision_porcentaje and comision_porcentaje.strip():
+                        float(comision_porcentaje.replace(',', ''))
+                except ValueError:
+                    errores.append("% Comisión debe ser un número válido")
 
                 submitted_nueva_poliza = st.form_submit_button("💾 Guardar Nueva Póliza")
                 if submitted_nueva_poliza:
-                    if not no_poliza:
-                        st.warning("Debe completar el número de póliza")
-                    elif fecha_errors:
-                        st.warning("Corrija los errores en las fechas antes de guardar")
+                    if errores:
+                        for error in errores:
+                            st.error(error)
+                        st.warning("Por favor, complete todos los campos obligatorios antes de guardar.")
                     else:
                         # Verificar si ya existe el número de póliza
                         poliza_existe = False
@@ -3332,7 +3423,8 @@ def mostrar_cobranza(df_polizas, df_cobranza):
                             with col_form2:
                                 fecha_pago = st.text_input(
                                     "Fecha de Pago (dd/mm/yyyy)", 
-                                    value=fecha_actual(), 
+                                    value="", 
+                                    placeholder="dd/mm/yyyy",
                                     key="fecha_pago_cob"
                                 )
                                 
@@ -3581,8 +3673,3 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
-
-
-
-
-
