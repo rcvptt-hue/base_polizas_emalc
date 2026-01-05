@@ -1703,7 +1703,7 @@ def mostrar_operacion(df_operacion):
             concepto_index = OPCIONES_CONCEPTO_OPERACION.index(concepto_val) if concepto_val in OPCIONES_CONCEPTO_OPERACION else 0
             concepto = st.selectbox(
                 "Concepto*", 
-                OPCIONES_CONCEPTO_OPERACION, 
+                [""] + OPCIONES_CONCEPTO_OPERACION, 
                 index=concepto_index
             )
 
@@ -1730,7 +1730,7 @@ def mostrar_operacion(df_operacion):
             forma_pago_index = OPCIONES_FORMA_PAGO_OPERACION.index(forma_pago_val) if forma_pago_val in OPCIONES_FORMA_PAGO_OPERACION else 0
             forma_pago = st.selectbox(
                 "Forma de Pago*", 
-                OPCIONES_FORMA_PAGO_OPERACION, 
+                [""] + OPCIONES_FORMA_PAGO_OPERACION, 
                 index=forma_pago_index
             )
 
@@ -1739,7 +1739,7 @@ def mostrar_operacion(df_operacion):
             banco_index = OPCIONES_BANCO.index(banco_val) if banco_val in OPCIONES_BANCO else 0
             banco = st.selectbox(
                 "Banco", 
-                OPCIONES_BANCO, 
+                [""] + OPCIONES_BANCO, 
                 index=banco_index
             )
 
@@ -1762,7 +1762,7 @@ def mostrar_operacion(df_operacion):
             deducible_index = OPCIONES_DEDUCIBLE.index(deducible_val) if deducible_val in OPCIONES_DEDUCIBLE else 1
             deducible = st.selectbox(
                 "Deducible", 
-                OPCIONES_DEDUCIBLE, 
+                [""]+OPCIONES_DEDUCIBLE, 
                 index=deducible_index
             )
 
@@ -2030,7 +2030,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             tipo_persona_index = OPCIONES_PERSONA.index(tipo_persona_val) if tipo_persona_val in OPCIONES_PERSONA else 0
             tipo_persona = st.selectbox(
                 "Tipo Persona", 
-                OPCIONES_PERSONA, 
+                 [""]+OPCIONES_PERSONA, 
                 index=tipo_persona_index,
                 key=f"tipo_persona_{st.session_state.form_key}"
             )
@@ -2091,7 +2091,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             producto_index = OPCIONES_PRODUCTO.index(producto_val) if producto_val in OPCIONES_PRODUCTO else 0
             producto = st.selectbox(
                 "Producto", 
-                OPCIONES_PRODUCTO, 
+                 [""]+OPCIONES_PRODUCTO, 
                 index=producto_index,
                 key=f"producto_{st.session_state.form_key}"
             )
@@ -2397,7 +2397,7 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                     st.text_input("Tipo Persona", value=prospecto_data.get("Tipo Persona", ""), key="registro_tipo", disabled=True)
                     st.text_input("Nombre/Razón Social", value=prospecto_data.get("Nombre/Razón Social", ""), key="registro_nombre", disabled=True)
                     no_poliza = st.text_input("No. Póliza*", key="registro_numero", placeholder="Ingrese número de póliza")
-                    producto_poliza = st.selectbox("Producto", OPCIONES_PRODUCTO, 
+                    producto_poliza = st.selectbox("Producto", [""] + OPCIONES_PRODUCTO, 
                                           index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
                                           if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
                                           key="registro_producto")
@@ -2409,18 +2409,18 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                                key="registro_fin")
                     rfc_poliza = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="registro_rfc")
                     forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="registro_pago")
-                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA,placeholder="Selecciona Moneda", key="registro_moneda")
+                    moneda = st.selectbox("Moneda", [""] + OPCIONES_MONEDA,placeholder="Selecciona Moneda", key="registro_moneda")
 
                 with col2:
-                    banco = st.selectbox("Banco", OPCIONES_BANCO, key="registro_banco")
-                    periodicidad = st.selectbox("Periodicidad", ["CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
+                    banco = st.selectbox("Banco", [""] + OPCIONES_BANCO, key="registro_banco")
+                    periodicidad = st.selectbox("Periodicidad", [" ", "CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
                     prima_total_emitida = st.text_input("Prima Total Emitida", key="registro_prima_total", placeholder="Ingrese monto")
                     prima_neta = st.text_input("Prima Neta", key="registro_prima_neta", placeholder="Ingrese monto")
                     primer_pago = st.text_input("Primer Pago", key="registro_primer_pago", placeholder="Ingrese monto")
                     pagos_subsecuentes = st.text_input("Pagos Subsecuentes", key="registro_pagos_subsecuentes", placeholder="Ingrese monto")
-                    aseguradora = st.selectbox("Aseguradora", OPCIONES_ASEG, key="registro_aseguradora")
+                    aseguradora = st.selectbox("Aseguradora", [""] + OPCIONES_ASEG, key="registro_aseguradora")
                     comision_porcentaje = st.text_input("% Comisión", key="registro_comision_pct", placeholder="Ej: 10.5")
-                    estado = st.selectbox("Estado", OPCIONES_ESTADO_POLIZA, key="registro_estado")
+                    estado = st.selectbox("Estado", [""] + OPCIONES_ESTADO_POLIZA, key="registro_estado")
                     contacto = st.text_input("Contacto", key="registro_contacto", placeholder="Persona de contacto")
                     direccion = st.text_input("Dirección (Indicar ciudad y CP)", 
                                             value=prospecto_data.get("Dirección", ""),
@@ -2441,7 +2441,7 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                                        value=prospecto_data.get("Referenciador", ""),
                                                        placeholder="Origen del cliente/promoción",
                                                        key="registro_referenciador")
-                    clave_emision = st.selectbox("Clave de Emisión", ["Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"],key="registro_clave_emision")
+                    clave_emision = st.selectbox("Clave de Emisión", [" ","Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"],key="registro_clave_emision")
                  
                 # Validar fechas obligatorias
                 fecha_errors = []
@@ -2538,7 +2538,7 @@ def mostrar_consulta_clientes(df_polizas):
         return
 
     # Seleccionar cliente
-    cliente_seleccionado = st.selectbox("Seleccionar Cliente", clientes_unicos, key="consulta_cliente")
+    cliente_seleccionado = st.selectbox("Seleccionar Cliente", [""] + clientes_unicos, key="consulta_cliente")
 
     if cliente_seleccionado:
         # Filtrar pólizas del cliente seleccionado
@@ -2578,7 +2578,7 @@ def mostrar_consulta_clientes(df_polizas):
                     with col1:
                         tipo_persona_edit = st.selectbox(
                             "Tipo Persona", 
-                            OPCIONES_PERSONA,
+                            [""] + OPCIONES_PERSONA,
                             index=OPCIONES_PERSONA.index(st.session_state.cliente_data_edit.get("Tipo Persona", OPCIONES_PERSONA[0])) 
                             if st.session_state.cliente_data_edit.get("Tipo Persona") in OPCIONES_PERSONA else 0,
                             key="edit_tipo_persona"
@@ -2711,7 +2711,7 @@ def mostrar_consulta_clientes(df_polizas):
         st.subheader("Detalles de Póliza Específica")
         if "No. Póliza" in polizas_cliente.columns:
             polizas_lista = polizas_cliente["No. Póliza"].tolist()
-            poliza_seleccionada = st.selectbox("Seleccionar Póliza para ver detalles", polizas_lista, key="detalle_poliza_consulta")
+            poliza_seleccionada = st.selectbox("Seleccionar Póliza para ver detalles", [""] + polizas_lista, key="detalle_poliza_consulta")
             
             if poliza_seleccionada:
                 poliza_detalle = polizas_cliente[polizas_cliente["No. Póliza"] == poliza_seleccionada].iloc[0]
@@ -2741,7 +2741,7 @@ def mostrar_consulta_clientes(df_polizas):
                 # Formulario para actualizar estado de la póliza
                 with st.form("form_actualizar_estado"):
                     st.write("**Actualizar Estado de la Póliza**")
-                    nuevo_estado = st.selectbox("Nuevo Estado", OPCIONES_ESTADO_POLIZA, 
+                    nuevo_estado = st.selectbox("Nuevo Estado",[""] +  OPCIONES_ESTADO_POLIZA, 
                                                index=OPCIONES_ESTADO_POLIZA.index(poliza_detalle.get('Estado', 'VIGENTE')) 
                                                if poliza_detalle.get('Estado') in OPCIONES_ESTADO_POLIZA else 0)
                     
@@ -2788,7 +2788,7 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     no_poliza = st.text_input("No. Póliza*", 
                                             placeholder="Ingrese el número de póliza",
                                             key="nueva_poliza_numero")
-                    producto = st.selectbox("Producto*", OPCIONES_PRODUCTO, 
+                    producto = st.selectbox("Producto*", [""] + OPCIONES_PRODUCTO, 
                                           key="nueva_poliza_producto")
                     inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
                                                   placeholder="dd/mm/yyyy",
@@ -2796,13 +2796,13 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     fin_vigencia = st.text_input("Fin Vigencia (dd/mm/yyyy)*", 
                                                placeholder="dd/mm/yyyy",
                                                key="nueva_poliza_fin")
-                    forma_pago = st.selectbox("Forma de Pago*", OPCIONES_PAGO, 
+                    forma_pago = st.selectbox("Forma de Pago*",[""] +  OPCIONES_PAGO, 
                                             key="nueva_poliza_pago")
-                    banco = st.selectbox("Banco*", OPCIONES_BANCO, 
+                    banco = st.selectbox("Banco*", [""] + OPCIONES_BANCO, 
                                        key="nueva_poliza_banco")
-                    periodicidad = st.selectbox("Periodicidad*", ["CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], 
+                    periodicidad = st.selectbox("Periodicidad*", [" ", "CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], 
                                               key="nueva_poliza_periodicidad")
-                    moneda = st.selectbox("Moneda*", OPCIONES_MONEDA, 
+                    moneda = st.selectbox("Moneda*", [""] + OPCIONES_MONEDA, 
                                         key="nueva_poliza_moneda")
 
                 with col2:
@@ -2818,12 +2818,12 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     pagos_subsecuentes = st.text_input("Pagos Subsecuentes*", 
                                                       placeholder="Ej: 1000.00",
                                                       key="nueva_poliza_pagos_subsecuentes")
-                    aseguradora = st.selectbox("Aseguradora*", OPCIONES_ASEG, 
+                    aseguradora = st.selectbox("Aseguradora*", [""] + OPCIONES_ASEG, 
                                              key="nueva_poliza_aseguradora")
                     comision_porcentaje = st.text_input("% Comisión*", 
                                                       placeholder="Ej: 10.5",
                                                       key="nueva_poliza_comision_pct")
-                    estado = st.selectbox("Estado*", OPCIONES_ESTADO_POLIZA, 
+                    estado = st.selectbox("Estado*", [""] + OPCIONES_ESTADO_POLIZA, 
                                         key="nueva_poliza_estado")
                     contacto = st.text_input("Contacto (opcional)", 
                                            placeholder="Persona de contacto",
@@ -2835,7 +2835,7 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                                                 placeholder="Origen del cliente/promoción",
                                                 key="nueva_poliza_referenciador")
                     clave_emision = st.selectbox("Clave de Emisión*", 
-                                               ["Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"], 
+                                               [" ", "Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"], 
                                                key="nueva_poliza_clave_emision")
 
                 # Lista de campos obligatorios (todos excepto Contacto y Dirección)
@@ -2878,7 +2878,7 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
 
                 # Validar que los campos obligatorios no estén vacíos
                 for campo_nombre, campo_valor in campos_obligatorios:
-                    if not campo_valor or str(campo_valor).strip() == "":
+                    if not campo_valor or str(campo_valor).strip() == "" or str(campo_valor).strip() == " ":
                         errores.append(f"{campo_nombre} es obligatorio")
 
                 # Validar que los campos numéricos tengan valores válidos
@@ -3111,7 +3111,7 @@ def mostrar_renovaciones(df_polizas):
         if polizas_lista:
             poliza_seleccionada = st.selectbox(
                 "Seleccionar Póliza para ver detalles", 
-                polizas_lista, 
+                [""] + polizas_lista, 
                 key="detalle_poliza_renovaciones"
             )
             
@@ -3673,3 +3673,4 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
