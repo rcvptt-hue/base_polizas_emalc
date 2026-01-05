@@ -55,20 +55,36 @@ st.set_page_config(
 
 # Opciones
 OPCIONES_PRODUCTO = [
-    "GMMI", "GMMC", "API", "APE", "APC", "VPL", "OV", "PPR",
-    "EDUCACIONAL", "AHORRO", "TEMPORAL", "VG", "AUTO", "FLOTILLA", "HOGAR", "VIAJERO", "DAÑOS", "PENDIENTE"
+    "AHORRO",
+    "API",
+    "APE",
+    "APC",
+    "AUTO",
+    "DAÑOS",
+    "EDUCACIONAL",
+    "FLOTILLA",
+    "GMMC",
+    "GMMI",
+    "HOGAR",
+    "OV",
+    "PENDIENTE",
+    "PPR",
+    "TEMPORAL",
+    "VG",
+    "VIAJERO",
+    "VPL"
 ]
-OPCIONES_PAGO = ["PAGO REFERENCIADO", "TRANSFERENCIA", "CARGO TDC", "CARGO TDD"]
-OPCIONES_ASEG = ["AXA", "ALLIANZ", "ATLAS", "BANORTE", "ZURICH", "GNP", "HIR", "QUALITAS"]
+OPCIONES_PAGO = ["CARGO TDC", "CARGO TDD","PAGO REFERENCIADO", "TRANSFERENCIA"]
+OPCIONES_ASEG = [ "ALLIANZ", "ATLAS", "AXA","BANORTE", "GNP", "HIR", "QUALITAS","ZURICH"]
 OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANCOMER", "BANREGIO", "HSBC", "SANTANDER"]
 OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
 OPCIONES_MONEDA = ["MXN", "UDIS", "DLLS"]
 OPCIONES_ESTATUS_SEGUIMIENTO = ["Seguimiento", "Descartado", "Convertido"]
 OPCIONES_ESTADO_POLIZA = ["VIGENTE", "CANCELADO", "TERMINADO"]
-OPCIONES_CONCEPTO_OPERACION = ["Papelería", "Contabilidad", "Patrocinio", "Tarjetas", "Promocionales", "Impuestos", "Gasolina"]
+OPCIONES_CONCEPTO_OPERACION = [ "Contabilidad","Gasolina", "Impuestos","Papelería","Patrocinio","Promocionales", "Tarjetas"]
 OPCIONES_FORMA_PAGO_OPERACION = ["Efectivo", "TDC", "TDD", "Transferencia"]
 OPCIONES_DEDUCIBLE = ["Sí", "No"]
-OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Vencido", "Pagado"]
+OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Pagado", "Vencido"]
 
 # Inicializar estado de sesión
 if 'active_tab' not in st.session_state:
@@ -452,7 +468,7 @@ def calcular_cobranza():
                     })
 
                 # Avanzar a la siguiente fecha según periodicidad
-                if periodicidad == "ANUAL":
+                if periodicidad == "CONTADO":
                     fecha_actual_calc += relativedelta(years=1)
                 elif periodicidad == "TRIMESTRAL":
                     fecha_actual_calc += relativedelta(months=3)
@@ -2379,11 +2395,11 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                                key="registro_fin")
                     rfc_poliza = st.text_input("RFC", value=prospecto_data.get("RFC", ""), key="registro_rfc")
                     forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="registro_pago")
-                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="registro_moneda")
+                    moneda = st.selectbox("Moneda", OPCIONES_MONEDA,placeholder="Selecciona Moneda", key="registro_moneda")
 
                 with col2:
                     banco = st.selectbox("Banco", OPCIONES_BANCO, key="registro_banco")
-                    periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
+                    periodicidad = st.selectbox("Periodicidad", ["CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="registro_periodicidad")
                     prima_total_emitida = st.text_input("Prima Total Emitida", key="registro_prima_total")
                     prima_neta = st.text_input("Prima Neta", key="registro_prima_neta")
                     primer_pago = st.text_input("Primer Pago", key="registro_primer_pago")
@@ -2411,7 +2427,7 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                                        value=prospecto_data.get("Referenciador", ""),
                                                        placeholder="Origen del cliente/promoción",
                                                        key="registro_referenciador")
-                    clave_emision = st.text_input("Clave de Emisión", key="registro_clave_emision")
+                    clave_emision = st.selectbox("Clave de Emisión", ["Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"],key="registro_clave_emision")
                  
                 # Validar fechas obligatorias
                 fecha_errors = []
@@ -2765,7 +2781,7 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                                                key="nueva_poliza_fin")
                     forma_pago = st.selectbox("Forma de Pago", OPCIONES_PAGO, key="nueva_poliza_pago")
                     banco = st.selectbox("Banco", OPCIONES_BANCO, key="nueva_poliza_banco")
-                    periodicidad = st.selectbox("Periodicidad", ["ANUAL", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="nueva_poliza_periodicidad")
+                    periodicidad = st.selectbox("Periodicidad", ["CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"], key="nueva_poliza_periodicidad")
                     moneda = st.selectbox("Moneda", OPCIONES_MONEDA, key="nueva_poliza_moneda")
 
                 with col2:
@@ -2783,7 +2799,7 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     referenciador = st.text_input("Referenciador", 
                                                 placeholder="Origen del cliente/promoción",
                                                 key="nueva_poliza_referenciador")
-                    clave_emision = st.text_input("Clave de Emisión", key="nueva_poliza_clave_emision")
+                    clave_emision = st.selectbox("Clave de Emisión", ["Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"], key="nueva_poliza_clave_emision")
 
                 # Validar fechas obligatorias
                 fecha_errors = []
@@ -3565,6 +3581,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
