@@ -86,6 +86,19 @@ OPCIONES_FORMA_PAGO_OPERACION = ["Efectivo", "TDC", "TDD", "Transferencia"]
 OPCIONES_DEDUCIBLE = ["Sí", "No"]
 OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Pagado", "Vencido"]
 
+def get_selectbox_index(options_list, current_value, has_empty_first=True):
+    if not current_value or current_value == "" or current_value == " ":
+        return 0
+    try:
+        if current_value in options_list:
+            index = options_list.index(current_value)
+            return index + 1 if has_empty_first else index
+        else:
+            return 0
+    except (ValueError, AttributeError):
+        return 0
+
+
 # Inicializar estado de sesión
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = "👥 Prospectos"
@@ -1956,7 +1969,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         st.session_state.prospecto_editando = None
     if 'prospecto_data' not in st.session_state:
         st.session_state.prospecto_data = {}
-    # Estado clave para forzar actualización
     if 'form_key' not in st.session_state:
         st.session_state.form_key = 0
 
@@ -1981,17 +1993,14 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                         st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
-                        # Incrementar la clave del formulario para forzar reinicio
                         st.session_state.form_key += 1
                         st.rerun()
 
             with col_btn2:
                 if st.button("❌ Limpiar selección", use_container_width=True, key="btn_limpiar_seleccion"):
-                    # Limpiar estado
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
-                    # Incrementar la clave del formulario para forzar reinicio
                     st.session_state.form_key += 1
                     st.rerun()
 
@@ -2007,30 +2016,27 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
-            # Incrementar la clave del formulario para forzar reinicio
             st.session_state.form_key += 1
             st.rerun()
 
     # --- FORMULARIO PRINCIPAL - USAR KEY DINÁMICA ---
-    # Usamos una clave dinámica para forzar la recreación del formulario
     form_key = f"form_prospectos_{st.session_state.form_key}"
     
     with st.form(form_key, clear_on_submit=True):
         st.subheader("📝 Formulario de Prospecto")
         
-        # Mostrar información de edición
         if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_editando:
             st.info(f"Editando: **{st.session_state.prospecto_editando}**")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            # Tipo Persona - usar valor actual o vacío
+            # Tipo Persona - CORREGIDO
             tipo_persona_val = st.session_state.prospecto_data.get("Tipo Persona", "")
-            tipo_persona_index = OPCIONES_PERSONA.index(tipo_persona_val) if tipo_persona_val in OPCIONES_PERSONA else 0
+            tipo_persona_index = get_selectbox_index(OPCIONES_PERSONA, tipo_persona_val)
             tipo_persona = st.selectbox(
                 "Tipo Persona", 
-                 [""]+OPCIONES_PERSONA, 
+                [""] + OPCIONES_PERSONA, 
                 index=tipo_persona_index,
                 key=f"tipo_persona_{st.session_state.form_key}"
             )
@@ -2075,7 +2081,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 placeholder="Ingrese correo electrónico"
             )
 
-            # Notas - AQUÍ ESTÁ LA CLAVE: usar directamente de prospecto_data
+            # Notas - CORREGIDO
             notas_valor = st.session_state.prospecto_data.get("Notas", "")
             notas = st.text_area(
                 "Notas", 
@@ -2086,12 +2092,12 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             )
 
         with col2:
-            # Producto
+            # Producto - CORREGIDO
             producto_val = st.session_state.prospecto_data.get("Producto", "")
-            producto_index = OPCIONES_PRODUCTO.index(producto_val) if producto_val in OPCIONES_PRODUCTO else 0
+            producto_index = get_selectbox_index(OPCIONES_PRODUCTO, producto_val)
             producto = st.selectbox(
                 "Producto", 
-                 [""]+OPCIONES_PRODUCTO, 
+                [""] + OPCIONES_PRODUCTO, 
                 index=producto_index,
                 key=f"producto_{st.session_state.form_key}"
             )
@@ -2187,14 +2193,12 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         col_b1, col_b2 = st.columns(2)
         
         with col_b1:
-            # Botón de envío principal
             if st.session_state.modo_edicion_prospectos:
                 submit_button = st.form_submit_button("💾 Actualizar Prospecto", use_container_width=True)
             else:
                 submit_button = st.form_submit_button("💾 Agregar Nuevo Prospecto", use_container_width=True)
         
         with col_b2:
-            # Botón de cancelar secundario
             cancel_button = st.form_submit_button("🚫 Cancelar", use_container_width=True, type="secondary")
 
         # --- PROCESAR BOTÓN CANCELAR ---
@@ -2202,7 +2206,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
-            # Incrementar la clave del formulario para forzar reinicio
             st.session_state.form_key += 1
             st.rerun()
 
@@ -2255,7 +2258,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
-                    # Incrementar la clave del formulario para forzar reinicio
                     st.session_state.form_key += 1
                     
                     st.rerun()
@@ -2265,7 +2267,6 @@ def mostrar_prospectos(df_prospectos, df_polizas):
     # --- MOSTRAR LISTA DE PROSPECTOS ---
     st.subheader("📋 Lista de Prospectos")
     if not df_prospectos.empty:
-        # Mostrar columnas más relevantes
         columnas_mostrar = [
             "Nombre/Razón Social", "Producto", "Teléfono", "Correo",
             "Fecha Registro", "Referenciador", "Notas", "Estatus"
@@ -3673,4 +3674,5 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
