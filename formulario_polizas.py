@@ -86,18 +86,24 @@ OPCIONES_FORMA_PAGO_OPERACION = ["Efectivo", "TDC", "TDD", "Transferencia"]
 OPCIONES_DEDUCIBLE = ["Sí", "No"]
 OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Pagado", "Vencido"]
 
-def get_selectbox_index(options_list, current_value, has_empty_first=True):
-    if not current_value or current_value == "" or current_value == " ":
-        return 0
+# Función auxiliar para obtener índices de selectbox
+def obtener_indice_selectbox(valor, opciones):
+    """Obtiene el índice correcto para selectbox considerando el valor vacío"""
+    if valor is None or valor == "" or str(valor).strip() == "":
+        return 0  # Primer elemento vacío
+    
+    # Crear lista completa con elemento vacío
+    opciones_completas = [""] + opciones
+    
     try:
-        if current_value in options_list:
-            index = options_list.index(current_value)
-            return index + 1 if has_empty_first else index
-        else:
-            return 0
-    except (ValueError, AttributeError):
-        return 0
-
+        return opciones_completas.index(valor)
+    except ValueError:
+        # Si el valor no está en la lista, buscar coincidencias parciales
+        valor_str = str(valor).strip().upper()
+        for i, opcion in enumerate(opciones_completas):
+            if opcion and valor_str == str(opcion).strip().upper():
+                return i
+        return 0  # Por defecto, primer elemento vacío
 
 # Inicializar estado de sesión
 if 'active_tab' not in st.session_state:
@@ -137,6 +143,10 @@ if 'editando_cliente' not in st.session_state:
     st.session_state.editando_cliente = False
 if 'cliente_data_edit' not in st.session_state:
     st.session_state.cliente_data_edit = {}
+if 'editando_poliza' not in st.session_state:
+    st.session_state.editando_poliza = False
+if 'poliza_data_edit' not in st.session_state:
+    st.session_state.poliza_data_edit = {}
 
 # Configuración de Google Sheets
 @st.cache_resource(ttl=3600)
@@ -578,7 +588,7 @@ def mostrar_asesoria_axa():
             )
             
             fumador = st.session_state.asesoria_data['informacion_personal'].get('fumador', '')
-            fumador_index = ["", "Sí", "No"].index(fumador) if fumador in ["", "Sí", "No"] else 0
+            fumador_index = obtener_indice_selectbox(fumador, ["Sí", "No"])
             st.session_state.asesoria_data['informacion_personal']['fumador'] = st.selectbox(
                 "¿Has fumado en los últimos dos años?*", 
                 options=["", "Sí", "No"],
@@ -598,7 +608,7 @@ def mostrar_asesoria_axa():
         
         with col1:
             estado_civil = st.session_state.asesoria_data['informacion_familiar'].get('estado_civil', '')
-            estado_civil_index = ["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"].index(estado_civil) if estado_civil in ["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"] else 0
+            estado_civil_index = obtener_indice_selectbox(estado_civil, ["Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"])
             st.session_state.asesoria_data['informacion_familiar']['estado_civil'] = st.selectbox(
                 "Estado civil", 
                 options=["", "Soltero", "Casado", "Unión libre", "Divorciado", "Viudo"],
@@ -1713,7 +1723,7 @@ def mostrar_operacion(df_operacion):
 
             # Concepto
             concepto_val = st.session_state.operacion_data.get("Concepto", "")
-            concepto_index = OPCIONES_CONCEPTO_OPERACION.index(concepto_val) if concepto_val in OPCIONES_CONCEPTO_OPERACION else 0
+            concepto_index = obtener_indice_selectbox(concepto_val, OPCIONES_CONCEPTO_OPERACION)
             concepto = st.selectbox(
                 "Concepto*", 
                 [""] + OPCIONES_CONCEPTO_OPERACION, 
@@ -1740,7 +1750,7 @@ def mostrar_operacion(df_operacion):
         with col2:
             # Forma de Pago
             forma_pago_val = st.session_state.operacion_data.get("Forma de Pago", "")
-            forma_pago_index = OPCIONES_FORMA_PAGO_OPERACION.index(forma_pago_val) if forma_pago_val in OPCIONES_FORMA_PAGO_OPERACION else 0
+            forma_pago_index = obtener_indice_selectbox(forma_pago_val, OPCIONES_FORMA_PAGO_OPERACION)
             forma_pago = st.selectbox(
                 "Forma de Pago*", 
                 [""] + OPCIONES_FORMA_PAGO_OPERACION, 
@@ -1749,7 +1759,7 @@ def mostrar_operacion(df_operacion):
 
             # Banco
             banco_val = st.session_state.operacion_data.get("Banco", "NINGUNO")
-            banco_index = OPCIONES_BANCO.index(banco_val) if banco_val in OPCIONES_BANCO else 0
+            banco_index = obtener_indice_selectbox(banco_val, OPCIONES_BANCO)
             banco = st.selectbox(
                 "Banco", 
                 [""] + OPCIONES_BANCO, 
@@ -1772,7 +1782,7 @@ def mostrar_operacion(df_operacion):
 
             # Deducible
             deducible_val = st.session_state.operacion_data.get("Deducible", "No")
-            deducible_index = OPCIONES_DEDUCIBLE.index(deducible_val) if deducible_val in OPCIONES_DEDUCIBLE else 1
+            deducible_index = obtener_indice_selectbox(deducible_val, OPCIONES_DEDUCIBLE)
             deducible = st.selectbox(
                 "Deducible", 
                 [""]+OPCIONES_DEDUCIBLE, 
@@ -1969,6 +1979,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         st.session_state.prospecto_editando = None
     if 'prospecto_data' not in st.session_state:
         st.session_state.prospecto_data = {}
+    # Estado clave para forzar actualización
     if 'form_key' not in st.session_state:
         st.session_state.form_key = 0
 
@@ -1993,14 +2004,17 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                         st.session_state.prospecto_data = {k: str(v) if v is not None else "" for k, v in fila.to_dict().items()}
                         st.session_state.prospecto_editando = prospecto_seleccionado
                         st.session_state.modo_edicion_prospectos = True
+                        # Incrementar la clave del formulario para forzar reinicio
                         st.session_state.form_key += 1
                         st.rerun()
 
             with col_btn2:
                 if st.button("❌ Limpiar selección", use_container_width=True, key="btn_limpiar_seleccion"):
+                    # Limpiar estado
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
+                    # Incrementar la clave del formulario para forzar reinicio
                     st.session_state.form_key += 1
                     st.rerun()
 
@@ -2016,27 +2030,30 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
+            # Incrementar la clave del formulario para forzar reinicio
             st.session_state.form_key += 1
             st.rerun()
 
     # --- FORMULARIO PRINCIPAL - USAR KEY DINÁMICA ---
+    # Usamos una clave dinámica para forzar la recreación del formulario
     form_key = f"form_prospectos_{st.session_state.form_key}"
     
     with st.form(form_key, clear_on_submit=True):
         st.subheader("📝 Formulario de Prospecto")
         
+        # Mostrar información de edición
         if st.session_state.modo_edicion_prospectos and st.session_state.prospecto_editando:
             st.info(f"Editando: **{st.session_state.prospecto_editando}**")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            # Tipo Persona - CORREGIDO
+            # Tipo Persona - usar valor actual o vacío
             tipo_persona_val = st.session_state.prospecto_data.get("Tipo Persona", "")
-            tipo_persona_index = get_selectbox_index(OPCIONES_PERSONA, tipo_persona_val)
+            tipo_persona_index = obtener_indice_selectbox(tipo_persona_val, OPCIONES_PERSONA)
             tipo_persona = st.selectbox(
                 "Tipo Persona", 
-                [""] + OPCIONES_PERSONA, 
+                 [""]+OPCIONES_PERSONA, 
                 index=tipo_persona_index,
                 key=f"tipo_persona_{st.session_state.form_key}"
             )
@@ -2081,7 +2098,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                 placeholder="Ingrese correo electrónico"
             )
 
-            # Notas - CORREGIDO
+            # Notas - AQUÍ ESTÁ LA CLAVE: usar directamente de prospecto_data
             notas_valor = st.session_state.prospecto_data.get("Notas", "")
             notas = st.text_area(
                 "Notas", 
@@ -2092,12 +2109,12 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             )
 
         with col2:
-            # Producto - CORREGIDO
+            # Producto
             producto_val = st.session_state.prospecto_data.get("Producto", "")
-            producto_index = get_selectbox_index(OPCIONES_PRODUCTO, producto_val)
+            producto_index = obtener_indice_selectbox(producto_val, OPCIONES_PRODUCTO)
             producto = st.selectbox(
                 "Producto", 
-                [""] + OPCIONES_PRODUCTO, 
+                 [""]+OPCIONES_PRODUCTO, 
                 index=producto_index,
                 key=f"producto_{st.session_state.form_key}"
             )
@@ -2193,12 +2210,14 @@ def mostrar_prospectos(df_prospectos, df_polizas):
         col_b1, col_b2 = st.columns(2)
         
         with col_b1:
+            # Botón de envío principal
             if st.session_state.modo_edicion_prospectos:
                 submit_button = st.form_submit_button("💾 Actualizar Prospecto", use_container_width=True)
             else:
                 submit_button = st.form_submit_button("💾 Agregar Nuevo Prospecto", use_container_width=True)
         
         with col_b2:
+            # Botón de cancelar secundario
             cancel_button = st.form_submit_button("🚫 Cancelar", use_container_width=True, type="secondary")
 
         # --- PROCESAR BOTÓN CANCELAR ---
@@ -2206,6 +2225,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
             st.session_state.prospecto_editando = None
             st.session_state.modo_edicion_prospectos = False
             st.session_state.prospecto_data = {}
+            # Incrementar la clave del formulario para forzar reinicio
             st.session_state.form_key += 1
             st.rerun()
 
@@ -2258,6 +2278,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
                     st.session_state.prospecto_editando = None
                     st.session_state.modo_edicion_prospectos = False
                     st.session_state.prospecto_data = {}
+                    # Incrementar la clave del formulario para forzar reinicio
                     st.session_state.form_key += 1
                     
                     st.rerun()
@@ -2267,6 +2288,7 @@ def mostrar_prospectos(df_prospectos, df_polizas):
     # --- MOSTRAR LISTA DE PROSPECTOS ---
     st.subheader("📋 Lista de Prospectos")
     if not df_prospectos.empty:
+        # Mostrar columnas más relevantes
         columnas_mostrar = [
             "Nombre/Razón Social", "Producto", "Teléfono", "Correo",
             "Fecha Registro", "Referenciador", "Notas", "Estatus"
@@ -2399,8 +2421,7 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                     st.text_input("Nombre/Razón Social", value=prospecto_data.get("Nombre/Razón Social", ""), key="registro_nombre", disabled=True)
                     no_poliza = st.text_input("No. Póliza*", key="registro_numero", placeholder="Ingrese número de póliza")
                     producto_poliza = st.selectbox("Producto", [""] + OPCIONES_PRODUCTO, 
-                                          index=OPCIONES_PRODUCTO.index(prospecto_data.get("Producto", "")) 
-                                          if prospecto_data.get("Producto") in OPCIONES_PRODUCTO else 0,
+                                          index=obtener_indice_selectbox(prospecto_data.get("Producto", ""), OPCIONES_PRODUCTO),
                                           key="registro_producto")
                     inicio_vigencia = st.text_input("Inicio Vigencia (dd/mm/yyyy)*", 
                                                   placeholder="dd/mm/yyyy",
@@ -2577,11 +2598,12 @@ def mostrar_consulta_clientes(df_polizas):
                     col1, col2 = st.columns(2)
                     
                     with col1:
+                        tipo_persona_val = st.session_state.cliente_data_edit.get("Tipo Persona", "")
+                        tipo_persona_index = obtener_indice_selectbox(tipo_persona_val, OPCIONES_PERSONA)
                         tipo_persona_edit = st.selectbox(
                             "Tipo Persona", 
                             [""] + OPCIONES_PERSONA,
-                            index=OPCIONES_PERSONA.index(st.session_state.cliente_data_edit.get("Tipo Persona", OPCIONES_PERSONA[0])) 
-                            if st.session_state.cliente_data_edit.get("Tipo Persona") in OPCIONES_PERSONA else 0,
+                            index=tipo_persona_index,
                             key="edit_tipo_persona"
                         )
                         rfc_edit = st.text_input(
@@ -2739,12 +2761,245 @@ def mostrar_consulta_clientes(df_polizas):
                     st.write(f"**Pagos Subsecuentes:** {poliza_detalle.get('Pagos Subsecuentes', 'N/A')}")
                     st.write(f"**% Comisión:** {poliza_detalle.get('% Comisión', 'N/A')}")
 
+                # ===========================================
+                # 🆕 SECCIÓN PARA EDITAR PÓLIZA
+                # ===========================================
+                st.markdown("---")
+                st.subheader("✏️ Editar Póliza")
+                
+                # Inicializar estado para edición
+                if 'editando_poliza' not in st.session_state:
+                    st.session_state.editando_poliza = False
+                if 'poliza_data_edit' not in st.session_state:
+                    st.session_state.poliza_data_edit = {}
+                
+                # Botón para iniciar edición
+                if not st.session_state.editando_poliza:
+                    if st.button("✏️ Editar esta Póliza", key="btn_editar_poliza"):
+                        st.session_state.editando_poliza = True
+                        st.session_state.poliza_data_edit = poliza_detalle.to_dict()
+                        st.rerun()
+                else:
+                    # Formulario de edición
+                    with st.form("form_editar_poliza"):
+                        st.write(f"**Editando Póliza:** {poliza_seleccionada}")
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Número de póliza (no editable)
+                            st.text_input("No. Póliza (no editable)", 
+                                        value=poliza_seleccionada, 
+                                        disabled=True,
+                                        key="edit_no_poliza")
+                            
+                            # Producto
+                            producto_val = st.session_state.poliza_data_edit.get("Producto", "")
+                            producto_index = obtener_indice_selectbox(producto_val, OPCIONES_PRODUCTO)
+                            producto = st.selectbox(
+                                "Producto*", 
+                                [""] + OPCIONES_PRODUCTO, 
+                                index=producto_index,
+                                key="edit_producto"
+                            )
+                            
+                            # Inicio Vigencia
+                            inicio_vigencia = st.text_input(
+                                "Inicio Vigencia (dd/mm/yyyy)*", 
+                                value=st.session_state.poliza_data_edit.get("Inicio Vigencia", ""),
+                                placeholder="dd/mm/yyyy",
+                                key="edit_inicio_vigencia"
+                            )
+                            
+                            # Fin Vigencia
+                            fin_vigencia = st.text_input(
+                                "Fin Vigencia (dd/mm/yyyy)*", 
+                                value=st.session_state.poliza_data_edit.get("Fin Vigencia", ""),
+                                placeholder="dd/mm/yyyy",
+                                key="edit_fin_vigencia"
+                            )
+                            
+                            # RFC
+                            rfc = st.text_input(
+                                "RFC", 
+                                value=st.session_state.poliza_data_edit.get("RFC", ""),
+                                key="edit_rfc"
+                            )
+                            
+                            # Forma de Pago
+                            forma_pago_val = st.session_state.poliza_data_edit.get("Forma de Pago", "")
+                            forma_pago_index = obtener_indice_selectbox(forma_pago_val, OPCIONES_PAGO)
+                            forma_pago = st.selectbox(
+                                "Forma de Pago", 
+                                [""] + OPCIONES_PAGO, 
+                                index=forma_pago_index,
+                                key="edit_forma_pago"
+                            )
+                            
+                            # Banco
+                            banco_val = st.session_state.poliza_data_edit.get("Banco", "NINGUNO")
+                            banco_index = obtener_indice_selectbox(banco_val, OPCIONES_BANCO)
+                            banco = st.selectbox(
+                                "Banco", 
+                                [""] + OPCIONES_BANCO, 
+                                index=banco_index,
+                                key="edit_banco"
+                            )
+                            
+                            # Periodicidad
+                            periodicidad_options = [" ", "CONTADO", "MENSUAL", "TRIMESTRAL", "SEMESTRAL"]
+                            periodicidad_val = st.session_state.poliza_data_edit.get("Periodicidad", " ")
+                            periodicidad_index = periodicidad_options.index(periodicidad_val) if periodicidad_val in periodicidad_options else 0
+                            periodicidad = st.selectbox(
+                                "Periodicidad", 
+                                periodicidad_options, 
+                                index=periodicidad_index,
+                                key="edit_periodicidad"
+                            )
+                        
+                        with col2:
+                            # Prima Total Emitida
+                            prima_total_emitida = st.text_input(
+                                "Prima Total Emitida", 
+                                value=st.session_state.poliza_data_edit.get("Prima Total Emitida", ""),
+                                key="edit_prima_total"
+                            )
+                            
+                            # Prima Neta
+                            prima_neta = st.text_input(
+                                "Prima Neta", 
+                                value=st.session_state.poliza_data_edit.get("Prima Neta", ""),
+                                key="edit_prima_neta"
+                            )
+                            
+                            # Primer Pago
+                            primer_pago = st.text_input(
+                                "Primer Pago", 
+                                value=st.session_state.poliza_data_edit.get("Primer Pago", ""),
+                                key="edit_primer_pago"
+                            )
+                            
+                            # Pagos Subsecuentes
+                            pagos_subsecuentes = st.text_input(
+                                "Pagos Subsecuentes", 
+                                value=st.session_state.poliza_data_edit.get("Pagos Subsecuentes", ""),
+                                key="edit_pagos_subsecuentes"
+                            )
+                            
+                            # Aseguradora
+                            aseguradora_val = st.session_state.poliza_data_edit.get("Aseguradora", "")
+                            aseguradora_index = obtener_indice_selectbox(aseguradora_val, OPCIONES_ASEG)
+                            aseguradora = st.selectbox(
+                                "Aseguradora", 
+                                [""] + OPCIONES_ASEG, 
+                                index=aseguradora_index,
+                                key="edit_aseguradora"
+                            )
+                            
+                            # % Comisión
+                            comision_porcentaje = st.text_input(
+                                "% Comisión", 
+                                value=st.session_state.poliza_data_edit.get("% Comisión", ""),
+                                key="edit_comision_pct"
+                            )
+                            
+                            # Estado
+                            estado_val = st.session_state.poliza_data_edit.get("Estado", "VIGENTE")
+                            estado_index = obtener_indice_selectbox(estado_val, OPCIONES_ESTADO_POLIZA)
+                            estado = st.selectbox(
+                                "Estado", 
+                                [""] + OPCIONES_ESTADO_POLIZA, 
+                                index=estado_index,
+                                key="edit_estado"
+                            )
+                            
+                            # Moneda
+                            moneda_val = st.session_state.poliza_data_edit.get("Moneda", "MXN")
+                            moneda_index = obtener_indice_selectbox(moneda_val, OPCIONES_MONEDA)
+                            moneda = st.selectbox(
+                                "Moneda", 
+                                [""] + OPCIONES_MONEDA,
+                                index=moneda_index,
+                                key="edit_moneda"
+                            )
+                            
+                            # Clave de Emisión
+                            clave_emision_options = [" ", "Emilia Alcocer", "José Carlos Ibarra", "Suemy Alcocer"]
+                            clave_emision_val = st.session_state.poliza_data_edit.get("Clave de Emisión", " ")
+                            clave_emision_index = clave_emision_options.index(clave_emision_val) if clave_emision_val in clave_emision_options else 0
+                            clave_emision = st.selectbox(
+                                "Clave de Emisión", 
+                                clave_emision_options, 
+                                index=clave_emision_index,
+                                key="edit_clave_emision"
+                            )
+                        
+                        # Validaciones
+                        fecha_errors = []
+                        if inicio_vigencia:
+                            valido, error = validar_fecha(inicio_vigencia)
+                            if not valido:
+                                fecha_errors.append(f"Inicio Vigencia: {error}")
+                        
+                        if fin_vigencia:
+                            valido, error = validar_fecha(fin_vigencia)
+                            if not valido:
+                                fecha_errors.append(f"Fin Vigencia: {error}")
+                        
+                        if fecha_errors:
+                            for error in fecha_errors:
+                                st.error(error)
+                        
+                        # Botones
+                        col_btn1, col_btn2 = st.columns(2)
+                        with col_btn1:
+                            submitted = st.form_submit_button("💾 Guardar Cambios")
+                        with col_btn2:
+                            cancel = st.form_submit_button("❌ Cancelar Edición")
+                        
+                        if cancel:
+                            st.session_state.editando_poliza = False
+                            st.session_state.poliza_data_edit = {}
+                            st.rerun()
+                        
+                        if submitted:
+                            if fecha_errors:
+                                st.warning("Corrija los errores en las fechas antes de guardar")
+                            else:
+                                # Actualizar la póliza en el DataFrame
+                                mask = df_polizas['No. Póliza'] == poliza_seleccionada
+                                
+                                # Actualizar todos los campos
+                                df_polizas.loc[mask, 'Producto'] = producto
+                                df_polizas.loc[mask, 'Inicio Vigencia'] = inicio_vigencia
+                                df_polizas.loc[mask, 'Fin Vigencia'] = fin_vigencia
+                                df_polizas.loc[mask, 'RFC'] = rfc
+                                df_polizas.loc[mask, 'Forma de Pago'] = forma_pago
+                                df_polizas.loc[mask, 'Banco'] = banco
+                                df_polizas.loc[mask, 'Periodicidad'] = periodicidad
+                                df_polizas.loc[mask, 'Prima Total Emitida'] = prima_total_emitida
+                                df_polizas.loc[mask, 'Prima Neta'] = prima_neta
+                                df_polizas.loc[mask, 'Primer Pago'] = primer_pago
+                                df_polizas.loc[mask, 'Pagos Subsecuentes'] = pagos_subsecuentes
+                                df_polizas.loc[mask, 'Aseguradora'] = aseguradora
+                                df_polizas.loc[mask, '% Comisión'] = comision_porcentaje
+                                df_polizas.loc[mask, 'Estado'] = estado
+                                df_polizas.loc[mask, 'Moneda'] = moneda
+                                df_polizas.loc[mask, 'Clave de Emisión'] = clave_emision
+                                
+                                if guardar_datos(df_polizas=df_polizas):
+                                    st.success("✅ Póliza actualizada correctamente")
+                                    st.session_state.editando_poliza = False
+                                    st.session_state.poliza_data_edit = {}
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Error al actualizar la póliza")
+
                 # Formulario para actualizar estado de la póliza
                 with st.form("form_actualizar_estado"):
                     st.write("**Actualizar Estado de la Póliza**")
                     nuevo_estado = st.selectbox("Nuevo Estado",[""] +  OPCIONES_ESTADO_POLIZA, 
-                                               index=OPCIONES_ESTADO_POLIZA.index(poliza_detalle.get('Estado', 'VIGENTE')) 
-                                               if poliza_detalle.get('Estado') in OPCIONES_ESTADO_POLIZA else 0)
+                                               index=obtener_indice_selectbox(poliza_detalle.get('Estado', 'VIGENTE'), OPCIONES_ESTADO_POLIZA))
                     
                     if st.form_submit_button("💾 Actualizar Estado"):
                         # Actualizar el estado en el DataFrame
@@ -3674,5 +3929,3 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
-
-
