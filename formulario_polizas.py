@@ -76,12 +76,12 @@ OPCIONES_PRODUCTO = [
 ]
 OPCIONES_PAGO = ["CARGO TDC", "CARGO TDD","PAGO REFERENCIADO", "TRANSFERENCIA"]
 OPCIONES_ASEG = [ "ALLIANZ", "ATLAS", "AXA","BANORTE", "GNP", "HIR", "QUALITAS","ZURICH"]
-OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANCOMER", "BANREGIO", "HSBC", "SANTANDER"]
+OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANAMEX", "BANCOMER", "BANREGIO", "HSBC", "SANTANDER"]
 OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
 OPCIONES_MONEDA = ["MXN", "UDIS", "DLLS"]
 OPCIONES_ESTATUS_SEGUIMIENTO = ["Seguimiento", "Descartado", "Convertido"]
 OPCIONES_ESTADO_POLIZA = ["VIGENTE", "CANCELADO", "TERMINADO"]
-OPCIONES_CONCEPTO_OPERACION = [ "Contabilidad","Gasolina", "Impuestos","Papelería","Patrocinio","Promocionales", "Tarjetas"]
+OPCIONES_CONCEPTO_OPERACION = [ "Contabilidad","Gasolina", "Impuestos","Papelería","Patrocinio","Pautas Publicitarias", "Promocionales","Promoción de Regalo", "Redes y Mercadotecnia", "Tarjetas"]
 OPCIONES_FORMA_PAGO_OPERACION = ["Efectivo", "TDC", "TDD", "Transferencia"]
 OPCIONES_DEDUCIBLE = ["Sí", "No"]
 OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Pagado", "Vencido"]
@@ -3929,3 +3929,4 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
