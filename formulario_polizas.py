@@ -54,6 +54,7 @@ st.set_page_config(
 )
 
 # Opciones
+OPCIONES_PROMOCION = ["Sí", "No"]
 OPCIONES_PRODUCTO = [
     "AHORRO",
     "API",
@@ -75,7 +76,7 @@ OPCIONES_PRODUCTO = [
     "VPL"
 ]
 OPCIONES_PAGO = ["CARGO TDC", "CARGO TDD","PAGO REFERENCIADO", "TRANSFERENCIA"]
-OPCIONES_ASEG = [ "ALLIANZ", "ATLAS", "AXA","BANORTE", "GNP", "HIR", "QUALITAS","ZURICH"]
+OPCIONES_ASEG = [ "ALLIANZ", "ATLAS", "AXA","BANORTE", "GNP", "HIR", "PREVEM", "QUALITAS", "SKANDIA", "THONA", "ZURICH"]
 OPCIONES_BANCO = ["NINGUNO", "AMERICAN EXPRESS", "BBVA", "BANAMEX", "BANCOMER", "BANREGIO", "HSBC", "SANTANDER"]
 OPCIONES_PERSONA = ["MORAL", "FÍSICA"]
 OPCIONES_MONEDA = ["MXN", "UDIS", "DLLS"]
@@ -84,7 +85,7 @@ OPCIONES_ESTADO_POLIZA = ["VIGENTE", "CANCELADO", "TERMINADO"]
 OPCIONES_CONCEPTO_OPERACION = [ "Contabilidad","Gasolina", "Impuestos","Papelería","Patrocinio","Pautas Publicitarias", "Promocionales","Promoción de Regalo", "Redes y Mercadotecnia", "Tarjetas"]
 OPCIONES_FORMA_PAGO_OPERACION = ["Efectivo", "TDC", "TDD", "Transferencia"]
 OPCIONES_DEDUCIBLE = ["Sí", "No"]
-OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Pagado", "Vencido"]
+OPCIONES_ESTATUS_COBRANZA = ["Pendiente", "Pagado", "Vencido", "Cancelado"]
 
 # Función auxiliar para obtener índices de selectbox
 def obtener_indice_selectbox(valor, opciones):
@@ -377,6 +378,7 @@ def fecha_actual():
 def calcular_cobranza():
     """
     Calcula los registros de cobranza basándose en las pólizas vigentes.
+    MODIFICADO: Excluye pólizas canceladas y verifica fecha de cancelación
     """
     try:
         _, df_polizas, df_cobranza, _, _ = cargar_datos()
@@ -384,7 +386,7 @@ def calcular_cobranza():
         if df_polizas.empty:
             return pd.DataFrame()
 
-        # Filtrar pólizas vigentes
+        # Filtrar SOLO pólizas vigentes (excluir canceladas)
         df_vigentes = df_polizas[df_polizas["Estado"].astype(str).str.upper() == "VIGENTE"]
         if df_vigentes.empty:
             return pd.DataFrame()
@@ -393,7 +395,6 @@ def calcular_cobranza():
         fecha_limite = hoy + timedelta(days=60)
         cobranza_mes = []
 
-        # Función auxiliar para limpiar montos
         def parse_monto(valor):
             if pd.isna(valor) or str(valor).strip() == "":
                 return 0.0
@@ -403,7 +404,6 @@ def calcular_cobranza():
             except:
                 return 0.0
 
-        # Función para convertir fechas de manera segura
         def safe_date_convert(date_str):
             if pd.isna(date_str) or not date_str:
                 return None
@@ -419,11 +419,9 @@ def calcular_cobranza():
             periodicidad = str(poliza.get("Periodicidad", "")).upper().strip()
             moneda = poliza.get("Moneda", "MXN")
             
-            # Limpiar montos
             primer_pago = parse_monto(poliza.get("Primer Pago", 0))
             pagos_subsecuentes = parse_monto(poliza.get("Pagos Subsecuentes", 0))
             
-            # Si no hay pago subsecuente, usar el primer pago como default
             if pagos_subsecuentes == 0:
                 pagos_subsecuentes = primer_pago
 
@@ -431,7 +429,6 @@ def calcular_cobranza():
             if not no_poliza or not inicio_vigencia_str:
                 continue
 
-            # Convertir fecha de inicio de vigencia
             inicio_vigencia = safe_date_convert(inicio_vigencia_str)
             if inicio_vigencia is None:
                 continue
@@ -444,7 +441,6 @@ def calcular_cobranza():
                 mes_cobranza = fecha_actual_calc.strftime("%m/%Y")
                 fecha_vencimiento = fecha_actual_calc.strftime("%d/%m/%Y")
 
-                # Verificar si ya existe este registro en cobranza usando No. Póliza + Recibo
                 existe_registro = False
                 if not df_cobranza.empty and "No. Póliza" in df_cobranza.columns and "Recibo" in df_cobranza.columns:
                     existe_registro = (
@@ -453,13 +449,11 @@ def calcular_cobranza():
                     ).any()
 
                 if not existe_registro:
-                    # Determinar monto según el número de recibo
                     if num_recibo == 1:
                         monto_prima = primer_pago
                     else:
                         monto_prima = pagos_subsecuentes
 
-                    # Determinar estatus basado en fecha de vencimiento
                     if fecha_actual_calc.date() < hoy.date():
                         estatus = "Vencido"
                         comentario = "Cobranza vencida - registro tardío"
@@ -490,7 +484,6 @@ def calcular_cobranza():
                         "ID_Cobranza": f"{no_poliza}_R{num_recibo}"
                     })
 
-                # Avanzar a la siguiente fecha según periodicidad
                 if periodicidad == "CONTADO":
                     fecha_actual_calc += relativedelta(years=1)
                 elif periodicidad == "TRIMESTRAL":
@@ -500,17 +493,14 @@ def calcular_cobranza():
                 elif periodicidad == "MENSUAL":
                     fecha_actual_calc += relativedelta(months=1)
                 else:
-                    # Por defecto mensual
                     fecha_actual_calc += relativedelta(months=1)
 
                 num_recibo += 1
 
-        # Crear DataFrame
         df_resultado = pd.DataFrame(cobranza_mes)
         if df_resultado.empty:
             return df_resultado
 
-        # Eliminar duplicados por ID único
         df_resultado = df_resultado.drop_duplicates(
             subset=["ID_Cobranza"], 
             keep="last"
@@ -521,7 +511,133 @@ def calcular_cobranza():
     except Exception as e:
         st.error(f"Error al calcular cobranza: {e}")
         return pd.DataFrame()
-
+def cancelar_recibos_poliza(no_poliza, fecha_cancelacion, df_cobranza):
+    """
+    Cancela automáticamente los recibos futuros cuando se cancela una póliza
+    
+    Args:
+        no_poliza: Número de póliza cancelada
+        fecha_cancelacion: Fecha en que se canceló la póliza (dd/mm/yyyy)
+        df_cobranza: DataFrame de cobranza
+    
+    Returns:
+        DataFrame actualizado
+    """
+    try:
+        if df_cobranza.empty:
+            return df_cobranza
+        
+        # Convertir fecha de cancelación
+        try:
+            fecha_cancel_dt = datetime.strptime(fecha_cancelacion, "%d/%m/%Y")
+        except:
+            st.warning("No se pudo procesar la fecha de cancelación para actualizar recibos")
+            return df_cobranza
+        
+        # Filtrar recibos de esta póliza
+        mask_poliza = df_cobranza["No. Póliza"].astype(str).str.strip() == str(no_poliza).strip()
+        
+        # Para cada recibo de esta póliza
+        for idx in df_cobranza[mask_poliza].index:
+            fecha_vencimiento_str = df_cobranza.loc[idx, "Fecha Vencimiento"]
+            estatus_actual = df_cobranza.loc[idx, "Estatus"]
+            
+            # Solo procesar recibos pendientes o vencidos
+            if estatus_actual not in ["Pendiente", "Vencido"]:
+                continue
+            
+            try:
+                fecha_venc_dt = datetime.strptime(str(fecha_vencimiento_str), "%d/%m/%Y")
+                
+                # Si el vencimiento es posterior a la cancelación, cancelar el recibo
+                if fecha_venc_dt > fecha_cancel_dt:
+                    df_cobranza.loc[idx, "Estatus"] = "Cancelado"
+                    df_cobranza.loc[idx, "Comentario"] = f"Cancelado automáticamente - Póliza cancelada el {fecha_cancelacion}"
+                    df_cobranza.loc[idx, "Prima de Recibo"] = 0
+                    df_cobranza.loc[idx, "Monto Pagado"] = 0
+            except:
+                continue
+        
+        return df_cobranza
+        
+    except Exception as e:
+        st.error(f"Error al cancelar recibos: {e}")
+        return df_cobranza
+def mostrar_gestion_recibos(df_cobranza):
+    """
+    Permite gestionar (eliminar/cancelar) recibos de cobranza individualmente
+    """
+    st.subheader("🗑️ Gestión de Recibos de Cobranza")
+    
+    if df_cobranza.empty:
+        st.info("No hay recibos para gestionar")
+        return df_cobranza
+    
+    # Filtrar solo recibos pendientes o vencidos
+    df_gestionables = df_cobranza[df_cobranza['Estatus'].isin(['Pendiente', 'Vencido'])]
+    
+    if df_gestionables.empty:
+        st.success("No hay recibos pendientes o vencidos para gestionar")
+        return df_cobranza
+    
+    # Crear lista de recibos
+    opciones_recibos = []
+    for idx, row in df_gestionables.iterrows():
+        descripcion = f"{row['No. Póliza']} - Recibo {row['Recibo']} - {row.get('Nombre/Razón Social', '')} - Vence: {row.get('Fecha Vencimiento', '')} - {row.get('Estatus', '')}"
+        opciones_recibos.append({
+            'descripcion': descripcion,
+            'id_cobranza': f"{row['No. Póliza']}_R{row['Recibo']}",
+            'index': idx,
+            'datos': row
+        })
+    
+    # Selector
+    recibo_seleccionado = st.selectbox(
+        "Seleccionar Recibo para Cancelar/Eliminar",
+        options=[""] + [r['descripcion'] for r in opciones_recibos],
+        key="select_eliminar_recibo"
+    )
+    
+    if recibo_seleccionado:
+        recibo_data = next((r for r in opciones_recibos if r['descripcion'] == recibo_seleccionado), None)
+        
+        if recibo_data:
+            st.warning(f"**⚠️ Atención:** Está por cancelar el recibo #{recibo_data['datos']['Recibo']}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**Póliza:** {recibo_data['datos']['No. Póliza']}")
+                st.write(f"**Cliente:** {recibo_data['datos'].get('Nombre/Razón Social', '')}")
+                st.write(f"**Prima:** ${recibo_data['datos'].get('Prima de Recibo', 0):,.2f}")
+            
+            with col2:
+                st.write(f"**Vencimiento:** {recibo_data['datos'].get('Fecha Vencimiento', '')}")
+                st.write(f"**Estatus:** {recibo_data['datos'].get('Estatus', '')}")
+            
+            motivo = st.text_area(
+                "Motivo de la Cancelación*",
+                placeholder="Explique por qué se cancela este recibo...",
+                key="motivo_cancelacion_recibo"
+            )
+            
+            if st.button("🗑️ Confirmar Cancelación del Recibo", type="primary"):
+                if not motivo.strip():
+                    st.warning("Debe proporcionar un motivo para la cancelación")
+                else:
+                    # Actualizar el recibo
+                    idx = recibo_data['index']
+                    df_cobranza.loc[idx, 'Estatus'] = 'Cancelado'
+                    df_cobranza.loc[idx, 'Prima de Recibo'] = 0
+                    df_cobranza.loc[idx, 'Monto Pagado'] = 0
+                    df_cobranza.loc[idx, 'Comentario'] = f"Cancelado manualmente: {motivo}"
+                    
+                    if guardar_datos(df_cobranza=df_cobranza):
+                        st.success("✅ Recibo cancelado exitosamente")
+                        st.rerun()
+                    else:
+                        st.error("❌ Error al cancelar el recibo")
+    
+    return df_cobranza
 # ================================
 # 🆕 NUEVA PESTAÑA: ASESORÍA Rizkora
 # ================================
@@ -2464,7 +2580,15 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                                        placeholder="Origen del cliente/promoción",
                                                        key="registro_referenciador")
                     clave_emision = st.selectbox("Clave de Emisión", [" ","Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"],key="registro_clave_emision")
-                 
+                    # Promoción
+                    promocion_val = st.session_state.poliza_data_edit.get("Promoción", "No")
+                    promocion_index = obtener_indice_selectbox(promocion_val, OPCIONES_PROMOCION)
+                    promocion = st.selectbox(
+                        "Promoción", 
+                        [""] + OPCIONES_PROMOCION, 
+                        index=promocion_index,
+                        key="edit_promocion"
+                    )
                 # Validar fechas obligatorias
                 fecha_errors = []
                 if inicio_vigencia:
@@ -2530,7 +2654,8 @@ def mostrar_registro_cliente(df_prospectos, df_polizas):
                                 "Fecha Nacimiento": fecha_nacimiento_poliza if fecha_nacimiento_poliza else "",
                                 "Moneda": moneda,
                                 "Referenciador": referenciador_poliza,
-                                "Clave de Emisión": clave_emision
+                                "Clave de Emisión": clave_emision,
+                                "Promoción": promocion
                             }
 
                             df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
@@ -2645,7 +2770,14 @@ def mostrar_consulta_clientes(df_polizas):
                             value=st.session_state.cliente_data_edit.get("Referenciador", ""),
                             key="edit_referenciador"
                         )
-                    
+                        promocion_val = st.session_state.poliza_data_edit.get("Promoción", "No")
+                        promocion_index = obtener_indice_selectbox(promocion_val, OPCIONES_PROMOCION)
+                        promocion = st.selectbox(
+                            "Promoción", 
+                            [""] + OPCIONES_PROMOCION, 
+                            index=promocion_index,
+                            key="edit_promocion"
+                        )
                     # Validar fecha
                     fecha_error = None
                     if fecha_nacimiento_edit:
@@ -2678,14 +2810,43 @@ def mostrar_consulta_clientes(df_polizas):
                                 df_polizas.loc[index, "Dirección"] = direccion_edit
                                 df_polizas.loc[index, "Contacto"] = contacto_edit
                                 df_polizas.loc[index, "Referenciador"] = referenciador_edit
-                            
-                            if guardar_datos(df_polizas=df_polizas):
-                                st.success("✅ Datos del cliente actualizados correctamente")
-                                st.session_state.editando_cliente = False
-                                st.session_state.cliente_data_edit = {}
-                                st.rerun()
-                            else:
-                                st.error("❌ Error al actualizar los datos del cliente")
+                                df_polizas.loc[mask, 'Promoción'] = promocion
+                                # NUEVO: Si se cambió el estado a CANCELADO, cancelar recibos futuros
+                                estado_anterior = df_polizas[mask]['Estado'].values[0] if mask.any() else None
+                                
+                                if estado == "CANCELADO" and estado_anterior != "CANCELADO":
+                                    # Usar fecha actual como fecha de cancelación por defecto
+                                    fecha_cancelacion_input = datetime.now().strftime("%d/%m/%Y")
+                                    
+                                    st.info(f"⚠️ La póliza será cancelada. Se cancelarán automáticamente los recibos con vencimiento posterior al {fecha_cancelacion_input}")
+                                    
+                                    # Cargar cobranza actual
+                                    _, _, df_cobranza_actual, _, _ = cargar_datos()
+                                    
+                                    # Cancelar recibos futuros
+                                    df_cobranza_actualizada = cancelar_recibos_poliza(
+                                        poliza_seleccionada,
+                                        fecha_cancelacion_input,
+                                        df_cobranza_actual
+                                    )
+                                    
+                                    # Guardar ambos cambios
+                                    if guardar_datos(df_polizas=df_polizas, df_cobranza=df_cobranza_actualizada):
+                                        st.success("✅ Póliza actualizada y recibos futuros cancelados")
+                                        st.info(f"ℹ️ Se han cancelado automáticamente los recibos con vencimiento posterior al {fecha_cancelacion_input}")
+                                        st.session_state.editando_poliza = False
+                                        st.session_state.poliza_data_edit = {}
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Error al actualizar la póliza")
+                                else:
+                                  if guardar_datos(df_polizas=df_polizas):
+                                      st.success("✅ Datos del cliente actualizados correctamente")
+                                      st.session_state.editando_cliente = False
+                                      st.session_state.cliente_data_edit = {}
+                                      st.rerun()
+                                  else:
+                                      st.error("❌ Error al actualizar los datos del cliente")
             else:
                 # Mostrar información en modo lectura
                 col1, col2 = st.columns(2)
@@ -3093,6 +3254,7 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     clave_emision = st.selectbox("Clave de Emisión*", 
                                                [" ", "Emilia Alcocer","José Carlos Ibarra","Suemy Alcocer"], 
                                                key="nueva_poliza_clave_emision")
+                    promocion = st.selectbox("Promoción*", [""] + OPCIONES_PROMOCION, key="nueva_poliza_promocion")
 
                 # Lista de campos obligatorios (todos excepto Contacto y Dirección)
                 campos_obligatorios = [
@@ -3112,7 +3274,8 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                     ("% Comisión", comision_porcentaje),
                     ("Estado", estado),
                     ("Referenciador", referenciador),
-                    ("Clave de Emisión", clave_emision)
+                    ("Clave de Emisión", clave_emision),
+                    ("Promoción", promocion)
                 ]
 
                 errores = []
@@ -3214,7 +3377,8 @@ def mostrar_poliza_nueva(df_prospectos, df_polizas):
                                 "Fecha Nacimiento": cliente_data.get("Fecha Nacimiento", ""),
                                 "Moneda": moneda,
                                 "Referenciador": referenciador,
-                                "Clave de Emisión": clave_emision
+                                "Clave de Emisión": clave_emision,
+                                "Promoción": promocion
                             }
 
                             df_polizas = pd.concat([df_polizas, pd.DataFrame([nueva_poliza])], ignore_index=True)
@@ -3582,6 +3746,7 @@ def mostrar_cobranza(df_polizas, df_cobranza):
     - 🟠 **Naranja:** 11-20 días transcurridos
     - 🔴 **Rojo:** Más de 20 días transcurridos
     - 🔴 **Rojo oscuro:** Recibos vencidos (cobranza vencida)
+    - ⚫ **Gris:** Recibos cancelados
     """)
 
     # Formulario para registrar pagos (incluye recibos vencidos)
@@ -3764,7 +3929,10 @@ def mostrar_cobranza(df_polizas, df_cobranza):
             st.success("🎉 ¡Todos los recibos están pagados!")
     else:
         st.info("No hay recibos para mostrar")
-
+    # Sección para gestión de recibos
+    st.markdown("---")
+    df_cobranza_completa = mostrar_gestion_recibos(df_cobranza_completa)
+    st.markdown("---")
     # HISTORIAL DE PAGOS CON FILTROS MEJORADOS
     if df_cobranza is not None and not df_cobranza.empty:
         if 'Estatus' in df_cobranza.columns:
@@ -3929,4 +4097,5 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
