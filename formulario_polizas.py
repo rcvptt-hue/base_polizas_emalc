@@ -2921,6 +2921,7 @@ def mostrar_consulta_clientes(df_polizas):
                     st.write(f"**Primer Pago:** {poliza_detalle.get('Primer Pago', 'N/A')}")
                     st.write(f"**Pagos Subsecuentes:** {poliza_detalle.get('Pagos Subsecuentes', 'N/A')}")
                     st.write(f"**% Comisión:** {poliza_detalle.get('% Comisión', 'N/A')}")
+                    st.write(f"**Promoción:** {poliza_detalle.get('Promoción', 'N/A')}")
 
                 # ===========================================
                 # 🆕 SECCIÓN PARA EDITAR PÓLIZA
@@ -3094,6 +3095,15 @@ def mostrar_consulta_clientes(df_polizas):
                                 index=clave_emision_index,
                                 key="edit_clave_emision"
                             )
+                            # Promoción
+                            promocion_val = st.session_state.poliza_data_edit.get("Promoción", "No")
+                            promocion_index = obtener_indice_selectbox(promocion_val, OPCIONES_PROMOCION)
+                            promocion = st.selectbox(
+                                "Promoción", 
+                                [""] + OPCIONES_PROMOCION, 
+                                index=promocion_index,
+                                key="edit_promocion"
+                            )
                         
                         # Validaciones
                         fecha_errors = []
@@ -3147,6 +3157,7 @@ def mostrar_consulta_clientes(df_polizas):
                                 df_polizas.loc[mask, 'Estado'] = estado
                                 df_polizas.loc[mask, 'Moneda'] = moneda
                                 df_polizas.loc[mask, 'Clave de Emisión'] = clave_emision
+                                df_polizas.loc[mask, 'Promoción'] = promocion
                                 
                                 if guardar_datos(df_polizas=df_polizas):
                                     st.success("✅ Póliza actualizada correctamente")
@@ -4097,5 +4108,6 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
