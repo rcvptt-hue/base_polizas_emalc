@@ -4058,10 +4058,9 @@ def main():
         "🆕 Póliza Nueva",
         "🔄 Renovaciones",
         "💰 Cobranza",
-        "💰 Operación",
-        "📈 Asesoría Rizkora"  # NUEVA PESTAÑA
+        "💰 Operación"
     ]
-
+        #"📈 Asesoría Rizkora"  # NUEVA PESTAÑA
     # Usar radio buttons para una selección más confiable
     st.markdown("---")
     
@@ -4096,8 +4095,8 @@ def main():
         mostrar_cobranza(df_polizas, df_cobranza)
     elif st.session_state.active_tab == "💰 Operación":
         mostrar_operacion(df_operacion)
-    elif st.session_state.active_tab == "📈 Asesoría Rizkora":  # NUEVA PESTAÑA
-        mostrar_asesoria_axa()
+    #elif st.session_state.active_tab == "📈 Asesoría Rizkora":  # NUEVA PESTAÑA
+        #mostrar_asesoria_axa()
 
 # ================================
 # EJECUTAR LA APLICACIÓN
@@ -4108,6 +4107,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
