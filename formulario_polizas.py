@@ -55,39 +55,37 @@ st.set_page_config(
 # ================================
 # LOGO RIZKORA
 # ================================
-st.image("logo_vectorizado.png", width=250)
+st.image("logo_vectorizado_2.png", width=250)
 
 # ================================
-# 🔐 LOGIN SIMPLE RIZKORA
+# 🔐 LOGIN CON SECRETS (Streamlit Cloud)
 # ================================
-
-USUARIO_VALIDO = "roberto"
-PASSWORD_VALIDO = "rizkora123"
 
 def login():
-    # Inicializar variable de sesión
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
-    # Si NO está autenticado → mostrar login
     if not st.session_state.authenticated:
 
         st.title("🔐 Acceso Gestor Rizkora")
 
-        usuario = st.text_input("Usuario")
-        password = st.text_input("Contraseña", type="password")
+        usuario_input = st.text_input("Usuario")
+        password_input = st.text_input("Contraseña", type="password")
 
         if st.button("Ingresar"):
-            if usuario == USUARIO_VALIDO and password == PASSWORD_VALIDO:
+            if (
+                usuario_input == st.secrets["usuario"]
+                and password_input == st.secrets["password"]
+            ):
                 st.session_state.authenticated = True
                 st.success("Acceso concedido")
                 st.rerun()
             else:
                 st.error("Usuario o contraseña incorrectos")
 
-        st.stop()  # 🔴 Detiene todo el sistema aquí si no está logueado
+        st.stop()  # 🔴 Detiene todo si no está autenticado
 
-# Ejecutar login antes de cargar la app
+
 login()
 # ================================
 # 🚪 LOGOUT
@@ -4150,6 +4148,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
