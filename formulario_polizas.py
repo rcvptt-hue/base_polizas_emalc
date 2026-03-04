@@ -69,35 +69,52 @@ st.markdown(
         }
 
         /* ================================
-           TÍTULOS GRANDES (AMARILLO)
+           TITULOS PRINCIPALES (AMARILLO)
         ================================= */
         h1, h2 {
             color: #fff59d !important;
         }
 
         /* ================================
-           TEXTO GENERAL (BLANCO)
+           NAVEGACIÓN (BLANCO)
         ================================= */
-        h3, h4, h5, h6,
-        p, span, label, div {
+        .stRadio label,
+        .stRadio div,
+        .stRadio span {
             color: #ffffff !important;
         }
 
         /* ================================
-           INPUTS Y SELECTBOX (NEGRO)
+           TEXTO GENERAL (BLANCO)
+        ================================= */
+        h3, h4, h5, h6,
+        p, span, label {
+            color: #ffffff !important;
+        }
+
+        /* ================================
+           SELECTBOX - TEXTO NEGRO
+        ================================= */
+        div[data-baseweb="select"] > div {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+
+        div[data-baseweb="select"] span {
+            color: #000000 !important;
+        }
+
+        /* Opciones desplegadas */
+        ul[role="listbox"] li {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+        }
+
+        /* ================================
+           INPUTS - TEXTO NEGRO
         ================================= */
         input, textarea {
-            color: #000000 !important;
             background-color: #ffffff !important;
-        }
-
-        div[data-baseweb="select"] > div {
-            color: #000000 !important;
-            background-color: #ffffff !important;
-        }
-
-        /* Dropdown options */
-        ul[role="listbox"] li {
             color: #000000 !important;
         }
 
@@ -119,7 +136,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 # ================================
 # LOGO RIZKORA
 # ================================
@@ -4216,6 +4232,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
