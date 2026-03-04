@@ -52,6 +52,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+# ================================
+# LOGO RIZKORA
+# ================================
+st.image("logo_vectorizado.png", width=250)
 
 # Opciones
 OPCIONES_PROMOCION = ["Sí", "No"]
@@ -4107,6 +4111,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
