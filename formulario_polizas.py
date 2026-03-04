@@ -52,7 +52,42 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+st.markdown("""
+<style>
 
+/* ================================
+   FORZAR COLOR DE HEADERS
+================================= */
+
+/* Título principal */
+h1 {
+    color: #fff59d !important;
+}
+
+/* Header */
+h2 {
+    color: #fff59d !important;
+}
+
+/* Subheader */
+h3 {
+    color: #fff59d !important;
+}
+
+/* Asegurar que Streamlit no lo sobreescriba */
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3 {
+    color: #fff59d !important;
+}
+
+/* Incluso si hay spans internos */
+h1 span, h2 span, h3 span {
+    color: #fff59d !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
 st.markdown(
     """
     <style>
@@ -66,27 +101,6 @@ st.markdown(
 
         section[data-testid="stSidebar"] {
             background-color: #053a5c;
-        }
-
-        /* ================================
-           st.title()
-        ================================= */
-        div[data-testid="stMarkdownContainer"] h1 {
-            color: #fff59d !important;
-        }
-
-        /* ================================
-           st.header()
-        ================================= */
-        div[data-testid="stMarkdownContainer"] h2 {
-            color: #fff59d !important;
-        }
-
-        /* ================================
-           st.subheader() (incluye dentro de forms)
-        ================================= */
-        div[data-testid="stMarkdownContainer"] h3 {
-            color: #fff59d !important;
         }
 
         /* ================================
@@ -4279,6 +4293,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
