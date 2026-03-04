@@ -54,18 +54,41 @@ st.set_page_config(
 )
 
 # ================================
-# 🎨 COLOR DE FONDO PERSONALIZADO
+# 🎨 ESTILO GLOBAL RIZKORA
 # ================================
 st.markdown(
     """
     <style>
+        /* Fondo principal */
         .stApp {
             background-color: #064c78;
         }
-        
-        /* Texto general en blanco para contraste */
-        h1, h2, h3, h4, h5, h6, p, label, div {
-            color: white;
+
+        /* TODO el texto */
+        html, body, [class*="css"]  {
+            color: #fff59d !important;
+        }
+
+        /* Títulos */
+        h1, h2, h3, h4, h5, h6 {
+            color: #fff59d !important;
+        }
+
+        /* Labels */
+        label {
+            color: #fff59d !important;
+        }
+
+        /* Botones */
+        .stButton>button {
+            color: #fff59d !important;
+            background-color: transparent;
+            border: 1px solid #fff59d;
+        }
+
+        .stButton>button:hover {
+            background-color: #fff59d;
+            color: #064c78 !important;
         }
 
         /* Sidebar */
@@ -73,22 +96,10 @@ st.markdown(
             background-color: #053a5c;
         }
 
-        /* Botones */
-        .stButton>button {
-            background-color: white;
-            color: #064c78;
-            border-radius: 8px;
-        }
-
-        .stButton>button:hover {
-            background-color: #d9e6ef;
-            color: #064c78;
-        }
     </style>
     """,
     unsafe_allow_html=True
 )
-
 # ================================
 # LOGO RIZKORA
 # ================================
@@ -4185,6 +4196,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
