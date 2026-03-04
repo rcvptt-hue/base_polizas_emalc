@@ -52,20 +52,21 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-st.markdown("""
-<style>
-
-/* Ocultar menú hamburguesa */
-#MainMenu {visibility: hidden;}
-
-/* Ocultar footer */
-footer {visibility: hidden;}
-
-/* Ocultar header superior */
-header {visibility: hidden;}
-
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+  """
+ <style>
+ 
+ /* Ocultar menú hamburguesa */
+ #MainMenu {display: none;}
+ 
+ /* Ocultar footer */
+ footer {display: none;}
+ 
+ /* NO ocultar header completo */
+ 
+ </style>
+ """, unsafe_allow_html=True
+)
 
 st.markdown("""
 <style>
@@ -4308,6 +4309,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
