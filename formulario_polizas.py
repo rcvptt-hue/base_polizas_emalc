@@ -55,6 +55,21 @@ st.set_page_config(
 st.markdown("""
 <style>
 
+/* Ocultar menú hamburguesa */
+#MainMenu {visibility: hidden;}
+
+/* Ocultar footer */
+footer {visibility: hidden;}
+
+/* Ocultar header superior */
+header {visibility: hidden;}
+
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+
 /* ================================
    FORZAR COLOR DE HEADERS
 ================================= */
@@ -4293,6 +4308,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
