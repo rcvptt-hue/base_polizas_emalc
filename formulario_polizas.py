@@ -69,26 +69,29 @@ st.markdown(
         }
 
         /* ================================
-           TITULOS PRINCIPALES (AMARILLO)
+           HEADERS GRANDES (AMARILLO)
         ================================= */
+        .stMarkdown h1,
+        .stMarkdown h2,
         h1, h2 {
             color: #fff59d !important;
+            font-weight: 700;
+        }
+
+        /* ================================
+           TEXTO GENERAL (BLANCO)
+        ================================= */
+        .stMarkdown,
+        .stText,
+        p, span, label, div {
+            color: #ffffff !important;
         }
 
         /* ================================
            NAVEGACIÓN (BLANCO)
         ================================= */
         .stRadio label,
-        .stRadio div,
         .stRadio span {
-            color: #ffffff !important;
-        }
-
-        /* ================================
-           TEXTO GENERAL (BLANCO)
-        ================================= */
-        h3, h4, h5, h6,
-        p, span, label {
             color: #ffffff !important;
         }
 
@@ -104,10 +107,9 @@ st.markdown(
             color: #000000 !important;
         }
 
-        /* Opciones desplegadas */
         ul[role="listbox"] li {
-            color: #000000 !important;
             background-color: #ffffff !important;
+            color: #000000 !important;
         }
 
         /* ================================
@@ -119,23 +121,27 @@ st.markdown(
         }
 
         /* ================================
-           BOTONES
+           BOTONES (AZUL OSCURO FIJO)
         ================================= */
         .stButton>button {
+            background-color: #053a5c !important;
             color: #ffffff !important;
-            background-color: #053a5c;
-            border: 1px solid #ffffff;
+            border: 1px solid #053a5c !important;
+            transition: 0.2s ease-in-out;
         }
 
+        /* Hover más oscuro, elegante */
         .stButton>button:hover {
-            background-color: #fff59d;
-            color: #064c78 !important;
+            background-color: #032a42 !important;
+            border: 1px solid #032a42 !important;
+            color: #ffffff !important;
         }
 
     </style>
     """,
     unsafe_allow_html=True
 )
+
 # ================================
 # LOGO RIZKORA
 # ================================
@@ -4232,6 +4238,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
