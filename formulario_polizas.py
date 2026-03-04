@@ -55,20 +55,13 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* Ocultar menú de tres puntos */
-div[data-testid="stToolbar"] {
+/* Oculta botón de menú de opciones */
+div[data-testid="stToolbar"] button:nth-child(2) {
     display: none;
 }
 
-/* Ocultar footer */
-footer {
-    display: none;
-}
-
-/* Reducir espacio superior */
-div.block-container {
-    padding-top: 1rem;
-}
+/* Footer */
+footer {display:none;}
 
 </style>
 """, unsafe_allow_html=True)
@@ -4314,6 +4307,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
