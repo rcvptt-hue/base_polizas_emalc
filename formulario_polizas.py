@@ -53,9 +53,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================================
-# 🎨 ESTILO GLOBAL RIZKORA
-# ================================
 st.markdown(
     """
     <style>
@@ -64,19 +61,21 @@ st.markdown(
             background-color: #064c78;
         }
 
-        /* TODO el texto */
-        html, body, [class*="css"]  {
+        /* Forzar TODO el texto */
+        * {
             color: #fff59d !important;
         }
 
-        /* Títulos */
-        h1, h2, h3, h4, h5, h6 {
+        /* Inputs */
+        input, textarea {
             color: #fff59d !important;
+            background-color: #053a5c !important;
         }
 
-        /* Labels */
-        label {
+        /* Selectbox */
+        div[data-baseweb="select"] > div {
             color: #fff59d !important;
+            background-color: #053a5c !important;
         }
 
         /* Botones */
@@ -100,6 +99,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 # ================================
 # LOGO RIZKORA
 # ================================
@@ -4196,6 +4196,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
