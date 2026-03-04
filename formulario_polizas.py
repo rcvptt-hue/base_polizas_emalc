@@ -69,7 +69,7 @@ st.markdown(
         }
 
         /* ================================
-           HEADERS GRANDES (AMARILLO)
+           HEADERS PRINCIPALES
         ================================= */
         .stMarkdown h1,
         .stMarkdown h2,
@@ -79,41 +79,34 @@ st.markdown(
         }
 
         /* ================================
-           TEXTO GENERAL (BLANCO)
+           TEXTO GENERAL
         ================================= */
         .stMarkdown,
-        .stText,
-        p, span, label, div {
+        p, span, label {
             color: #ffffff !important;
         }
 
         /* ================================
-           NAVEGACIÓN (BLANCO)
+           SELECTBOX GLOBAL (FUERA Y DENTRO DE FORM)
         ================================= */
-        .stRadio label,
-        .stRadio span {
-            color: #ffffff !important;
-        }
 
-        /* ================================
-           SELECTBOX - TEXTO NEGRO
-        ================================= */
-        div[data-baseweb="select"] > div {
+        /* Caja visible */
+        div[data-baseweb="select"] {
             background-color: #ffffff !important;
+        }
+
+        div[data-baseweb="select"] * {
             color: #000000 !important;
         }
 
-        div[data-baseweb="select"] span {
-            color: #000000 !important;
-        }
-
+        /* Opciones desplegadas */
         ul[role="listbox"] li {
             background-color: #ffffff !important;
             color: #000000 !important;
         }
 
         /* ================================
-           INPUTS - TEXTO NEGRO
+           INPUTS (DENTRO Y FUERA DE FORM)
         ================================= */
         input, textarea {
             background-color: #ffffff !important;
@@ -121,17 +114,30 @@ st.markdown(
         }
 
         /* ================================
-           BOTONES (AZUL OSCURO FIJO)
+           BOTONES NORMALES
         ================================= */
         .stButton>button {
             background-color: #053a5c !important;
             color: #ffffff !important;
             border: 1px solid #053a5c !important;
-            transition: 0.2s ease-in-out;
         }
 
-        /* Hover más oscuro, elegante */
         .stButton>button:hover {
+            background-color: #032a42 !important;
+            border: 1px solid #032a42 !important;
+            color: #ffffff !important;
+        }
+
+        /* ================================
+           BOTONES DENTRO DE FORM
+        ================================= */
+        button[type="submit"] {
+            background-color: #053a5c !important;
+            color: #ffffff !important;
+            border: 1px solid #053a5c !important;
+        }
+
+        button[type="submit"]:hover {
             background-color: #032a42 !important;
             border: 1px solid #032a42 !important;
             color: #ffffff !important;
@@ -4238,6 +4244,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
