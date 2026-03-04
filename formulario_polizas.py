@@ -55,7 +55,46 @@ st.set_page_config(
 # ================================
 # LOGO RIZKORA
 # ================================
-#st.image("logo_vectorizado.png", width=250)
+st.image("logo_vectorizado.png", width=250)
+
+# ================================
+# 🔐 LOGIN SIMPLE RIZKORA
+# ================================
+
+USUARIO_VALIDO = "roberto"
+PASSWORD_VALIDO = "rizkora123"
+
+def login():
+    # Inicializar variable de sesión
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    # Si NO está autenticado → mostrar login
+    if not st.session_state.authenticated:
+
+        st.title("🔐 Acceso Gestor Rizkora")
+
+        usuario = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+
+        if st.button("Ingresar"):
+            if usuario == USUARIO_VALIDO and password == PASSWORD_VALIDO:
+                st.session_state.authenticated = True
+                st.success("Acceso concedido")
+                st.rerun()
+            else:
+                st.error("Usuario o contraseña incorrectos")
+
+        st.stop()  # 🔴 Detiene todo el sistema aquí si no está logueado
+
+# Ejecutar login antes de cargar la app
+login()
+# ================================
+# 🚪 LOGOUT
+# ================================
+if st.sidebar.button("Cerrar sesión"):
+    st.session_state.authenticated = False
+    st.rerun()
 
 # Opciones
 OPCIONES_PROMOCION = ["Sí", "No"]
@@ -4111,6 +4150,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
