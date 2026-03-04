@@ -56,43 +56,63 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        /* Fondo principal */
+
+        /* ================================
+           FONDO GENERAL
+        ================================= */
         .stApp {
             background-color: #064c78;
         }
 
-        /* Forzar TODO el texto */
-        * {
+        section[data-testid="stSidebar"] {
+            background-color: #053a5c;
+        }
+
+        /* ================================
+           TÍTULOS GRANDES (AMARILLO)
+        ================================= */
+        h1, h2 {
             color: #fff59d !important;
         }
 
-        /* Inputs */
+        /* ================================
+           TEXTO GENERAL (BLANCO)
+        ================================= */
+        h3, h4, h5, h6,
+        p, span, label, div {
+            color: #ffffff !important;
+        }
+
+        /* ================================
+           INPUTS Y SELECTBOX (NEGRO)
+        ================================= */
         input, textarea {
-            color: #fff59d !important;
-            background-color: #053a5c !important;
+            color: #000000 !important;
+            background-color: #ffffff !important;
         }
 
-        /* Selectbox */
         div[data-baseweb="select"] > div {
-            color: #fff59d !important;
-            background-color: #053a5c !important;
+            color: #000000 !important;
+            background-color: #ffffff !important;
         }
 
-        /* Botones */
+        /* Dropdown options */
+        ul[role="listbox"] li {
+            color: #000000 !important;
+        }
+
+        /* ================================
+           BOTONES
+        ================================= */
         .stButton>button {
-            color: #fff59d !important;
-            background-color: transparent;
-            border: 1px solid #fff59d;
+            color: #ffffff !important;
+            background-color: #053a5c;
+            border: 1px solid #ffffff;
         }
 
         .stButton>button:hover {
             background-color: #fff59d;
             color: #064c78 !important;
-        }
-
-        /* Sidebar */
-        section[data-testid="stSidebar"] {
-            background-color: #053a5c;
         }
 
     </style>
@@ -4196,6 +4216,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
