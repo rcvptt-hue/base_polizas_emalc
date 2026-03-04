@@ -52,21 +52,26 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-st.markdown(
-  """
- <style>
- 
- /* Ocultar menú hamburguesa */
- #MainMenu {display: none;}
- 
- /* Ocultar footer */
- footer {display: none;}
- 
- /* NO ocultar header completo */
- 
- </style>
- """, unsafe_allow_html=True
-)
+st.markdown("""
+<style>
+
+/* Ocultar menú de tres puntos */
+div[data-testid="stToolbar"] {
+    display: none;
+}
+
+/* Ocultar footer */
+footer {
+    display: none;
+}
+
+/* Reducir espacio superior */
+div.block-container {
+    padding-top: 1rem;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
@@ -4309,6 +4314,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
