@@ -55,13 +55,20 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* Oculta botón de menú de opciones */
-div[data-testid="stToolbar"] button:nth-child(2) {
+/* Ocultar SOLO el botón de menú (⋮) */
+button[kind="header"] {
     display: none;
 }
 
-/* Footer */
-footer {display:none;}
+/* Ocultar footer */
+footer {
+    display: none;
+}
+
+/* Ajustar padding superior */
+div.block-container {
+    padding-top: 1rem;
+}
 
 </style>
 """, unsafe_allow_html=True)
@@ -4307,6 +4314,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
