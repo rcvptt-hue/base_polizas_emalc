@@ -52,6 +52,43 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ================================
+# 🎨 COLOR DE FONDO PERSONALIZADO
+# ================================
+st.markdown(
+    """
+    <style>
+        .stApp {
+            background-color: #064c78;
+        }
+        
+        /* Texto general en blanco para contraste */
+        h1, h2, h3, h4, h5, h6, p, label, div {
+            color: white;
+        }
+
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: #053a5c;
+        }
+
+        /* Botones */
+        .stButton>button {
+            background-color: white;
+            color: #064c78;
+            border-radius: 8px;
+        }
+
+        .stButton>button:hover {
+            background-color: #d9e6ef;
+            color: #064c78;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # ================================
 # LOGO RIZKORA
 # ================================
@@ -4148,6 +4185,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
