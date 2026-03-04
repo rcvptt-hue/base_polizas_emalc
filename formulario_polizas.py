@@ -147,6 +147,30 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+st.markdown(
+    """
+    <style>
+
+        /* ================================
+           BOTONES st.form_submit_button
+        ================================= */
+
+        div[data-testid="stFormSubmitButton"] button {
+            background-color: #053a5c !important;
+            color: #ffffff !important;
+            border: 1px solid #053a5c !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] button:hover {
+            background-color: #032a42 !important;
+            border: 1px solid #032a42 !important;
+            color: #ffffff !important;
+        }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # ================================
 # LOGO RIZKORA
@@ -4244,6 +4268,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
