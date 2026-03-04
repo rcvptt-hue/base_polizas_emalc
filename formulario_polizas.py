@@ -69,13 +69,25 @@ st.markdown(
         }
 
         /* ================================
-           HEADERS PRINCIPALES
+           HEADERS PRINCIPALES AMARILLOS
         ================================= */
-        .stMarkdown h1,
-        .stMarkdown h2,
-        h1, h2 {
+
+        div[data-testid="stMarkdownContainer"] h1 {
             color: #fff59d !important;
-            font-weight: 700;
+        }
+
+        div[data-testid="stMarkdownContainer"] h2 {
+            color: #fff59d !important;
+        }
+
+        /* Por si usas st.title() */
+        h1 {
+            color: #fff59d !important;
+        }
+
+        /* Por si usas st.header() */
+        h2 {
+            color: #fff59d !important;
         }
 
         /* ================================
@@ -4268,6 +4280,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
