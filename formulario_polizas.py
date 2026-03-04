@@ -69,24 +69,23 @@ st.markdown(
         }
 
         /* ================================
-           HEADERS PRINCIPALES AMARILLOS
+           st.title()
         ================================= */
-
         div[data-testid="stMarkdownContainer"] h1 {
             color: #fff59d !important;
         }
 
+        /* ================================
+           st.header()
+        ================================= */
         div[data-testid="stMarkdownContainer"] h2 {
             color: #fff59d !important;
         }
 
-        /* Por si usas st.title() */
-        h1 {
-            color: #fff59d !important;
-        }
-
-        /* Por si usas st.header() */
-        h2 {
+        /* ================================
+           st.subheader() (incluye dentro de forms)
+        ================================= */
+        div[data-testid="stMarkdownContainer"] h3 {
             color: #fff59d !important;
         }
 
@@ -4280,6 +4279,7 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
+
 
 
 
