@@ -50,173 +50,625 @@ st.set_page_config(
     page_title="Gestor de Cartera Rizkora",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
+
+# ================================
+# CSS UNIFICADO Y RESPONSIVO
+# ================================
 st.markdown("""
 <style>
 
-/* Ocultar SOLO el botón de menú (⋮) */
-button[kind="header"] {
-    display: none;
+/* ================================================
+   VARIABLES Y RESET
+================================================ */
+:root {
+    --azul-principal: #064c78;
+    --azul-oscuro: #053a5c;
+    --azul-profundo: #032a42;
+    --azul-card: #0a5a8a;
+    --amarillo: #fff59d;
+    --amarillo-hover: #ffe57f;
+    --blanco: #ffffff;
+    --gris-claro: #e8f0f7;
+    --texto-claro: rgba(255,255,255,0.75);
+    --borde-card: rgba(255,255,255,0.12);
+    --sombra: 0 2px 12px rgba(0,0,0,0.25);
+    --radio: 10px;
+    --radio-sm: 6px;
 }
 
-/* Ocultar footer */
-footer {
-    display: none;
+/* ================================================
+   OCULTAR ELEMENTOS INNECESARIOS DE STREAMLIT
+================================================ */
+button[kind="header"],
+footer,
+#MainMenu,
+[data-testid="stDeployButton"],
+[data-testid="stDecoration"] {
+    display: none !important;
 }
 
-/* Ajustar padding superior */
+/* ================================================
+   FONDO Y LAYOUT PRINCIPAL
+================================================ */
+.stApp {
+    background-color: var(--azul-principal) !important;
+    background-image:
+        radial-gradient(ellipse at 10% 0%, rgba(12, 90, 138, 0.6) 0%, transparent 50%),
+        radial-gradient(ellipse at 90% 100%, rgba(3, 42, 66, 0.8) 0%, transparent 50%);
+    min-height: 100vh;
+}
+
+/* Contenedor principal: padding responsivo */
 div.block-container {
-    padding-top: 1rem;
+    padding-top: 1rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    max-width: 1200px !important;
 }
 
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-
-/* ================================
-   FORZAR COLOR DE HEADERS
-================================= */
-
-/* Título principal */
-h1 {
-    color: #fff59d !important;
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: var(--azul-oscuro) !important;
+    border-right: 1px solid var(--borde-card);
 }
 
-/* Header */
-h2 {
-    color: #fff59d !important;
+section[data-testid="stSidebar"] > div {
+    padding-top: 1.5rem;
 }
 
-/* Subheader */
-h3 {
-    color: #fff59d !important;
-}
-
-/* Asegurar que Streamlit no lo sobreescriba */
+/* ================================================
+   TIPOGRAFÍA Y HEADERS
+================================================ */
+h1, h2, h3, h4,
+h1 span, h2 span, h3 span,
 [data-testid="stMarkdownContainer"] h1,
 [data-testid="stMarkdownContainer"] h2,
 [data-testid="stMarkdownContainer"] h3 {
-    color: #fff59d !important;
+    color: var(--amarillo) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em;
 }
 
-/* Incluso si hay spans internos */
-h1 span, h2 span, h3 span {
-    color: #fff59d !important;
+h1 { font-size: clamp(1.4rem, 4vw, 2rem) !important; }
+h2 { font-size: clamp(1.1rem, 3vw, 1.5rem) !important; }
+h3 { font-size: clamp(1rem, 2.5vw, 1.2rem) !important; }
+
+/* Texto general */
+.stMarkdown, p, span, label, div {
+    color: var(--blanco) !important;
+}
+
+/* Info / warning / error messages */
+[data-testid="stNotification"] {
+    border-radius: var(--radio) !important;
+    font-size: 0.9rem;
+}
+
+/* Separadores */
+hr {
+    border-color: var(--borde-card) !important;
+    margin: 0.75rem 0 !important;
+}
+
+/* ================================================
+   NAVEGACIÓN (radio buttons como tabs)
+================================================ */
+[data-testid="stRadio"] > div {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.4rem !important;
+    background: rgba(3, 42, 66, 0.6) !important;
+    padding: 0.5rem !important;
+    border-radius: var(--radio) !important;
+    border: 1px solid var(--borde-card) !important;
+}
+
+[data-testid="stRadio"] label {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid var(--borde-card) !important;
+    border-radius: var(--radio-sm) !important;
+    padding: 0.35rem 0.7rem !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: all 0.18s ease !important;
+    color: var(--blanco) !important;
+    white-space: nowrap !important;
+    min-height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+[data-testid="stRadio"] label:hover {
+    background: rgba(255, 245, 157, 0.15) !important;
+    border-color: var(--amarillo) !important;
+    color: var(--amarillo) !important;
+}
+
+/* Radio seleccionado */
+[data-testid="stRadio"] [aria-checked="true"] ~ span,
+[data-testid="stRadio"] input[type="radio"]:checked + div {
+    color: var(--azul-profundo) !important;
+}
+
+[data-testid="stRadio"] label:has(input:checked) {
+    background: var(--amarillo) !important;
+    color: var(--azul-profundo) !important;
+    border-color: var(--amarillo) !important;
+    font-weight: 700 !important;
+}
+
+/* Ocultar el radio circle nativo */
+[data-testid="stRadio"] input[type="radio"] {
+    display: none !important;
+}
+
+/* ================================================
+   INPUTS Y FORMULARIOS
+================================================ */
+input,
+textarea,
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea {
+    background-color: rgba(255,255,255,0.97) !important;
+    color: #1a1a2e !important;
+    border-radius: var(--radio-sm) !important;
+    border: 1.5px solid rgba(6, 76, 120, 0.3) !important;
+    font-size: 0.95rem !important;
+    padding: 0.5rem 0.75rem !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+input:focus,
+textarea:focus {
+    border-color: var(--amarillo) !important;
+    box-shadow: 0 0 0 3px rgba(255, 245, 157, 0.2) !important;
+    outline: none !important;
+}
+
+/* Labels de inputs */
+[data-testid="stTextInput"] label,
+[data-testid="stTextArea"] label,
+[data-testid="stNumberInput"] label,
+[data-testid="stDateInput"] label,
+[data-testid="stSelectbox"] label {
+    color: var(--texto-claro) !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em !important;
+    text-transform: uppercase !important;
+    margin-bottom: 0.2rem !important;
+}
+
+/* Number input */
+[data-testid="stNumberInput"] input {
+    background-color: rgba(255,255,255,0.97) !important;
+    color: #1a1a2e !important;
+}
+
+/* ================================================
+   SELECTBOX
+================================================ */
+div[data-baseweb="select"] {
+    background-color: rgba(255,255,255,0.97) !important;
+    border-radius: var(--radio-sm) !important;
+}
+
+div[data-baseweb="select"] * {
+    color: #1a1a2e !important;
+}
+
+div[data-baseweb="select"] > div {
+    border-radius: var(--radio-sm) !important;
+    border-color: rgba(6, 76, 120, 0.3) !important;
+    min-height: 42px !important;
+}
+
+/* Dropdown abierto */
+ul[role="listbox"] {
+    background-color: #ffffff !important;
+    border-radius: var(--radio-sm) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+    border: 1px solid rgba(6, 76, 120, 0.2) !important;
+}
+
+ul[role="listbox"] li {
+    background-color: #ffffff !important;
+    color: #1a1a2e !important;
+    font-size: 0.9rem !important;
+    padding: 0.5rem 0.75rem !important;
+    transition: background 0.1s !important;
+}
+
+ul[role="listbox"] li:hover {
+    background-color: #e8f0f7 !important;
+}
+
+/* ================================================
+   BOTONES
+================================================ */
+.stButton > button,
+button[type="submit"],
+div[data-testid="stFormSubmitButton"] button {
+    background: linear-gradient(135deg, var(--azul-oscuro), var(--azul-profundo)) !important;
+    color: var(--blanco) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
+    border-radius: var(--radio-sm) !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    padding: 0.5rem 1.2rem !important;
+    min-height: 42px !important;
+    width: 100% !important;
+    transition: all 0.18s ease !important;
+    cursor: pointer !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+    letter-spacing: 0.01em !important;
+}
+
+.stButton > button:hover,
+button[type="submit"]:hover,
+div[data-testid="stFormSubmitButton"] button:hover {
+    background: linear-gradient(135deg, #0a6699, var(--azul-oscuro)) !important;
+    border-color: var(--amarillo) !important;
+    color: var(--amarillo) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,245,157,0.3) !important;
+    transform: translateY(-1px) !important;
+}
+
+.stButton > button:active,
+button[type="submit"]:active {
+    transform: translateY(0px) !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2) !important;
+}
+
+/* Botón primario / de acción */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #0f7abf, var(--azul-oscuro)) !important;
+    border-color: rgba(255,245,157,0.4) !important;
+}
+
+/* ================================================
+   DATAFRAMES Y TABLAS
+================================================ */
+[data-testid="stDataFrame"],
+[data-testid="dataframe"] {
+    border-radius: var(--radio) !important;
+    overflow: hidden !important;
+    box-shadow: var(--sombra) !important;
+}
+
+/* Scroll horizontal en móvil */
+[data-testid="stDataFrame"] > div {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+/* Cabecera de tabla */
+[data-testid="stDataFrame"] thead tr th {
+    background-color: var(--azul-oscuro) !important;
+    color: var(--amarillo) !important;
+    font-weight: 700 !important;
+    font-size: 0.8rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 0.6rem 0.8rem !important;
+    white-space: nowrap !important;
+}
+
+/* Filas de tabla */
+[data-testid="stDataFrame"] tbody tr td {
+    font-size: 0.85rem !important;
+    padding: 0.5rem 0.8rem !important;
+}
+
+/* ================================================
+   MÉTRICAS (st.metric)
+================================================ */
+[data-testid="stMetric"] {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid var(--borde-card) !important;
+    border-radius: var(--radio) !important;
+    padding: 1rem !important;
+    text-align: center !important;
+    transition: background 0.2s !important;
+}
+
+[data-testid="stMetric"]:hover {
+    background: rgba(255,255,255,0.11) !important;
+}
+
+[data-testid="stMetricLabel"] p {
+    font-size: 0.75rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    color: var(--texto-claro) !important;
+    font-weight: 600 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: var(--amarillo) !important;
+    font-size: clamp(1.2rem, 4vw, 1.8rem) !important;
+    font-weight: 800 !important;
+}
+
+[data-testid="stMetricDelta"] {
+    font-size: 0.8rem !important;
+}
+
+/* ================================================
+   EXPANDERS
+================================================ */
+[data-testid="stExpander"] {
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid var(--borde-card) !important;
+    border-radius: var(--radio) !important;
+    margin-bottom: 0.5rem !important;
+}
+
+[data-testid="stExpander"] summary {
+    color: var(--blanco) !important;
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    padding: 0.75rem 1rem !important;
+}
+
+[data-testid="stExpander"] summary:hover {
+    color: var(--amarillo) !important;
+}
+
+/* ================================================
+   TABS (st.tabs dentro de funciones)
+================================================ */
+[data-testid="stTabs"] [role="tablist"] {
+    background: rgba(3, 42, 66, 0.5) !important;
+    border-radius: var(--radio-sm) !important;
+    padding: 0.3rem !important;
+    gap: 0.2rem !important;
+    flex-wrap: wrap !important;
+}
+
+[data-testid="stTabs"] [role="tab"] {
+    color: var(--texto-claro) !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    padding: 0.4rem 0.8rem !important;
+    border-radius: var(--radio-sm) !important;
+    transition: all 0.15s ease !important;
+    border: none !important;
+    white-space: nowrap !important;
+}
+
+[data-testid="stTabs"] [role="tab"]:hover {
+    color: var(--amarillo) !important;
+    background: rgba(255,245,157,0.1) !important;
+}
+
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+    background: var(--amarillo) !important;
+    color: var(--azul-profundo) !important;
+    font-weight: 700 !important;
+}
+
+/* ================================================
+   ALERTS / INFO / WARNING / SUCCESS
+================================================ */
+[data-testid="stAlert"] {
+    border-radius: var(--radio) !important;
+    font-size: 0.88rem !important;
+}
+
+.stSuccess {
+    background-color: rgba(0, 191, 165, 0.15) !important;
+    border-color: #00bfa5 !important;
+    color: #ccf5f0 !important;
+}
+
+.stInfo {
+    background-color: rgba(144, 202, 249, 0.15) !important;
+    border-color: #90caf9 !important;
+    color: #e3f2fd !important;
+}
+
+.stWarning {
+    background-color: rgba(255, 245, 157, 0.15) !important;
+    border-color: var(--amarillo) !important;
+    color: var(--amarillo) !important;
+}
+
+.stError {
+    background-color: rgba(201, 94, 245, 0.1) !important;
+    border-color: #ef5350 !important;
+}
+
+/* ================================================
+   SIDEBAR: logout y navegación
+================================================ */
+section[data-testid="stSidebar"] .stButton > button {
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
+    color: var(--texto-claro) !important;
+    font-size: 0.85rem !important;
+    padding: 0.4rem 0.8rem !important;
+    min-height: 36px !important;
+}
+
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(255,80,80,0.2) !important;
+    border-color: #ef5350 !important;
+    color: #ffcdd2 !important;
+}
+
+/* ================================================
+   FORMULARIOS (st.form)
+================================================ */
+[data-testid="stForm"] {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid var(--borde-card) !important;
+    border-radius: var(--radio) !important;
+    padding: 1.25rem !important;
+}
+
+/* ================================================
+   COLUMNAS: gap responsivo
+================================================ */
+[data-testid="column"] {
+    padding: 0 0.3rem !important;
+}
+
+/* ================================================
+   LOGO RESPONSIVO
+================================================ */
+[data-testid="stImage"] img {
+    max-width: min(250px, 60vw) !important;
+    height: auto !important;
+}
+
+/* ================================================
+   SPINNER Y PROGRESS
+================================================ */
+[data-testid="stSpinner"] {
+    color: var(--amarillo) !important;
+}
+
+/* ================================================
+   SCROLLBAR PERSONALIZADO
+================================================ */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--azul-profundo);
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,245,157,0.4);
+}
+
+/* ================================================
+   RESPONSIVE: MÓVIL (≤ 768px)
+================================================ */
+@media screen and (max-width: 768px) {
+
+    /* Reducir padding en móvil */
+    div.block-container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-top: 0.75rem !important;
+    }
+
+    /* Navegación en móvil: scroll horizontal */
+    [data-testid="stRadio"] > div {
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding: 0.4rem !important;
+        gap: 0.3rem !important;
+        scrollbar-width: none !important;
+    }
+
+    [data-testid="stRadio"] > div::-webkit-scrollbar {
+        display: none !important;
+    }
+
+    [data-testid="stRadio"] label {
+        font-size: 0.75rem !important;
+        padding: 0.3rem 0.55rem !important;
+        min-width: max-content !important;
+        min-height: 32px !important;
+    }
+
+    /* Títulos más pequeños */
+    h1 { font-size: 1.3rem !important; }
+    h2 { font-size: 1.05rem !important; }
+    h3 { font-size: 0.95rem !important; }
+
+    /* Métricas en móvil */
+    [data-testid="stMetricValue"] {
+        font-size: 1.3rem !important;
+    }
+
+    /* Botones táctiles más grandes */
+    .stButton > button,
+    button[type="submit"],
+    div[data-testid="stFormSubmitButton"] button {
+        min-height: 48px !important;
+        font-size: 0.92rem !important;
+    }
+
+    /* Inputs táctiles */
+    input, textarea {
+        font-size: 16px !important; /* Evita zoom automático en iOS */
+        min-height: 44px !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        min-height: 44px !important;
+    }
+
+    /* Formularios sin padding lateral excesivo */
+    [data-testid="stForm"] {
+        padding: 0.75rem !important;
+    }
+
+    /* Tabs en móvil: scroll horizontal */
+    [data-testid="stTabs"] [role="tablist"] {
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+    }
+
+    [data-testid="stTabs"] [role="tab"] {
+        font-size: 0.78rem !important;
+        padding: 0.35rem 0.6rem !important;
+        white-space: nowrap !important;
+        min-width: max-content !important;
+    }
+
+    /* Columnas en móvil: menos gap */
+    [data-testid="column"] {
+        padding: 0 0.15rem !important;
+    }
+
+    /* Tablas: scroll horizontal */
+    [data-testid="stDataFrame"] {
+        overflow-x: auto !important;
+    }
+
+    /* Imagen logo */
+    [data-testid="stImage"] img {
+        max-width: 45vw !important;
+    }
+}
+
+/* ================================================
+   RESPONSIVE: TABLET (769px - 1024px)
+================================================ */
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+
+    div.block-container {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    [data-testid="stRadio"] label {
+        font-size: 0.8rem !important;
+        padding: 0.35rem 0.65rem !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem !important;
+    }
 }
 
 </style>
 """, unsafe_allow_html=True)
-st.markdown(
-    """
-    <style>
-
-        /* ================================
-           FONDO GENERAL
-        ================================= */
-        .stApp {
-            background-color: #064c78;
-        }
-
-        section[data-testid="stSidebar"] {
-            background-color: #053a5c;
-        }
-
-        /* ================================
-           TEXTO GENERAL
-        ================================= */
-        .stMarkdown,
-        p, span, label {
-            color: #ffffff !important;
-        }
-
-        /* ================================
-           SELECTBOX GLOBAL (FUERA Y DENTRO DE FORM)
-        ================================= */
-
-        /* Caja visible */
-        div[data-baseweb="select"] {
-            background-color: #ffffff !important;
-        }
-
-        div[data-baseweb="select"] * {
-            color: #000000 !important;
-        }
-
-        /* Opciones desplegadas */
-        ul[role="listbox"] li {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-        }
-
-        /* ================================
-           INPUTS (DENTRO Y FUERA DE FORM)
-        ================================= */
-        input, textarea {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-        }
-
-        /* ================================
-           BOTONES NORMALES
-        ================================= */
-        .stButton>button {
-            background-color: #053a5c !important;
-            color: #ffffff !important;
-            border: 1px solid #053a5c !important;
-        }
-
-        .stButton>button:hover {
-            background-color: #032a42 !important;
-            border: 1px solid #032a42 !important;
-            color: #ffffff !important;
-        }
-
-        /* ================================
-           BOTONES DENTRO DE FORM
-        ================================= */
-        button[type="submit"] {
-            background-color: #053a5c !important;
-            color: #ffffff !important;
-            border: 1px solid #053a5c !important;
-        }
-
-        button[type="submit"]:hover {
-            background-color: #032a42 !important;
-            border: 1px solid #032a42 !important;
-            color: #ffffff !important;
-        }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-st.markdown(
-    """
-    <style>
-
-        /* ================================
-           BOTONES st.form_submit_button
-        ================================= */
-
-        div[data-testid="stFormSubmitButton"] button {
-            background-color: #053a5c !important;
-            color: #ffffff !important;
-            border: 1px solid #053a5c !important;
-        }
-
-        div[data-testid="stFormSubmitButton"] button:hover {
-            background-color: #032a42 !important;
-            border: 1px solid #032a42 !important;
-            color: #ffffff !important;
-        }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 # ================================
 # LOGO RIZKORA
@@ -4314,29 +4766,3 @@ if __name__ == "__main__":
     
     # Ejecutar la aplicación
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
