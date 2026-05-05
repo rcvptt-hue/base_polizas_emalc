@@ -188,16 +188,17 @@ hr {
 }
 
 /* Radio seleccionado */
-[data-testid="stRadio"] [aria-checked="true"] ~ span,
-[data-testid="stRadio"] input[type="radio"]:checked + div {
-    color: var(--azul-profundo) !important;
-}
-
 [data-testid="stRadio"] label:has(input:checked) {
     background: var(--amarillo) !important;
-    color: var(--azul-profundo) !important;
+    color: #000000 !important;
     border-color: var(--amarillo) !important;
     font-weight: 700 !important;
+}
+
+[data-testid="stRadio"] label:has(input:checked) p,
+[data-testid="stRadio"] label:has(input:checked) span,
+[data-testid="stRadio"] label:has(input:checked) div {
+    color: #000000 !important;
 }
 
 /* Ocultar el radio circle nativo */
@@ -256,8 +257,11 @@ div[data-baseweb="select"] {
     border-radius: var(--radio-sm) !important;
 }
 
-div[data-baseweb="select"] * {
-    color: #1a1a2e !important;
+div[data-baseweb="select"] *,
+div[data-baseweb="select"] span,
+div[data-baseweb="select"] p,
+div[data-baseweb="select"] div {
+    color: #000000 !important;
 }
 
 div[data-baseweb="select"] > div {
@@ -274,16 +278,29 @@ ul[role="listbox"] {
     border: 1px solid rgba(6, 76, 120, 0.2) !important;
 }
 
-ul[role="listbox"] li {
+ul[role="listbox"] li,
+ul[role="listbox"] li span,
+ul[role="listbox"] li div,
+ul[role="listbox"] li p {
     background-color: #ffffff !important;
-    color: #1a1a2e !important;
+    color: #000000 !important;
     font-size: 0.9rem !important;
     padding: 0.5rem 0.75rem !important;
     transition: background 0.1s !important;
 }
 
-ul[role="listbox"] li:hover {
+ul[role="listbox"] li:hover,
+ul[role="listbox"] li:hover span {
     background-color: #e8f0f7 !important;
+    color: #000000 !important;
+}
+
+/* Elemento seleccionado en el listbox */
+ul[role="listbox"] li[aria-selected="true"],
+ul[role="listbox"] li[aria-selected="true"] span {
+    background-color: #e8f0f7 !important;
+    color: #000000 !important;
+    font-weight: 600 !important;
 }
 
 /* ================================================
