@@ -136,8 +136,42 @@ h2 { font-size: clamp(1.1rem, 3vw, 1.5rem) !important; }
 h3 { font-size: clamp(1rem, 2.5vw, 1.2rem) !important; }
 
 /* Texto general */
-.stMarkdown, p, span, label, div {
+.stMarkdown, p, label {
     color: var(--blanco) !important;
+}
+
+/* ================================================
+   SELECTBOX — forzar negro con máxima especificidad
+   El problema: "span, div { color: white }" del bloque
+   anterior heredaba al interior de los selectboxes.
+   Estos selectores son más específicos y lo anulan.
+================================================ */
+div[data-baseweb="select"] div,
+div[data-baseweb="select"] span,
+div[data-baseweb="select"] p,
+div[data-baseweb="select"] input {
+    color: #000000 !important;
+    background-color: #ffffff !important;
+}
+
+/* Dropdown desplegado */
+[data-baseweb="popover"] div,
+[data-baseweb="popover"] span,
+[data-baseweb="popover"] p,
+[data-baseweb="menu"] div,
+[data-baseweb="menu"] span,
+[data-baseweb="menu"] p,
+ul[role="listbox"] *,
+li[role="option"],
+li[role="option"] * {
+    color: #000000 !important;
+    background-color: #ffffff !important;
+}
+
+li[role="option"]:hover,
+li[role="option"]:hover * {
+    background-color: #dceeff !important;
+    color: #000000 !important;
 }
 
 /* Info / warning / error messages */
@@ -250,18 +284,11 @@ textarea:focus {
 }
 
 /* ================================================
-   SELECTBOX
+   SELECTBOX — contenedor y borde
 ================================================ */
 div[data-baseweb="select"] {
-    background-color: rgba(255,255,255,0.97) !important;
+    background-color: #ffffff !important;
     border-radius: var(--radio-sm) !important;
-}
-
-div[data-baseweb="select"] *,
-div[data-baseweb="select"] span,
-div[data-baseweb="select"] p,
-div[data-baseweb="select"] div {
-    color: #000000 !important;
 }
 
 div[data-baseweb="select"] > div {
@@ -270,37 +297,11 @@ div[data-baseweb="select"] > div {
     min-height: 42px !important;
 }
 
-/* Dropdown abierto */
 ul[role="listbox"] {
     background-color: #ffffff !important;
     border-radius: var(--radio-sm) !important;
     box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
     border: 1px solid rgba(6, 76, 120, 0.2) !important;
-}
-
-ul[role="listbox"] li,
-ul[role="listbox"] li span,
-ul[role="listbox"] li div,
-ul[role="listbox"] li p {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-    font-size: 0.9rem !important;
-    padding: 0.5rem 0.75rem !important;
-    transition: background 0.1s !important;
-}
-
-ul[role="listbox"] li:hover,
-ul[role="listbox"] li:hover span {
-    background-color: #e8f0f7 !important;
-    color: #000000 !important;
-}
-
-/* Elemento seleccionado en el listbox */
-ul[role="listbox"] li[aria-selected="true"],
-ul[role="listbox"] li[aria-selected="true"] span {
-    background-color: #e8f0f7 !important;
-    color: #000000 !important;
-    font-weight: 600 !important;
 }
 
 /* ================================================
