@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestor de Cartera — Rizkora</title>
+  <meta name="robots" content="noindex, nofollow">
+  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+  <style>
+    /* ═══════════════════════════════════════════
+       RIZKORA DESIGN SYSTEM — Navy / Gold
+       ═══════════════════════════════════════════ */
+    :root {
+      --navy-900: #041e35;
+      --navy-800: #053a5c;
+      --navy-700: #064c78;
+      --navy-600: #0a6090;
+      --gold: #fff59d;
+      --gold-dark: #c9a84c;
+      --white: #ffffff;
+      --white-70: rgba(255,255,255,0.7);
+      --white-40: rgba(255,255,255,0.4);
+      --white-15: rgba(255,255,255,0.15);
+      --white-08: rgba(255,255,255,0.08);
+      --green: #4caf50;
+      --green-bg: rgba(76,175,80,0.15);
+      --red: #ef5350;
+      --red-bg: rgba(239,83,80,0.15);
+      --amber: #ffa726;
+      --amber-bg: rgba(255,167,38,0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--navy-700);
+      color: var(--white);
+      min-height: 100vh;
+    }
+
+    /* ═══════════════════════════════════════════
+       SCREENS (password, login, app)
+       ═══════════════════════════════════════════ */
+    .screen {
+      display: none;
+      min-height: 100vh;
+    }
+    .screen.active { display: flex; }
+
+    .screen-center {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .screen-app {
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ═══════════════════════════════════════════
+       LOGO
+       ═══════════════════════════════════════════ */
+    .logo {
+      width: 200px;
+      margin-bottom: 32px;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
+    }
+
+    /* ═══════════════════════════════════════════
+       CARD (login, password)
+       ═══════════════════════════════════════════ */
+    .card {
+      background: var(--navy-800);
+      border: 1px solid var(--white-15);
+      border-radius: 12px;
+      padding: 32px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .card h2 {
+      color: var(--gold);
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      color: var(--white-70);
+      font-size: 14px;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    /* ═══════════════════════════════════════════
+       FORM CONTROLS
+       ═══════════════════════════════════════════ */
+    .input-group {
+      margin-bottom: 16px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 13px;
+      color: var(--white-70);
+      margin-bottom: 6px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--white-08);
+      border: 1px solid var(--white-15);
+      border-radius: 8px;
+      color: var(--white);
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-group input:focus {
+      border-color: var(--gold);
+    }
+
+    .input-group input::placeholder {
+      color: var(--white-40);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .btn-primary {
+      background: var(--gold);
+      color: var(--navy-900);
+    }
+    .btn-primary:hover { background: #fff9c4; }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--white-15);
+      color: var(--white);
+      border: 1px solid var(--white-15);
+    }
+    .btn-secondary:hover { background: var(--white-08); }
+
+    .btn-microsoft {
+      background: var(--white);
+      color: #333;
+    }
+    .btn-microsoft:hover { background: #f0f0f0; }
+
+    .btn-logout {
+      background: transparent;
+      color: var(--white-70);
+      border: 1px solid var(--white-15);
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+
+    .error-msg {
+      color: var(--red);
+      font-size: 13px;
+      margin-top: 8px;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    /* ═══════════════════════════════════════════
+       APP HEADER
+       ═══════════════════════════════════════════ */
+    .app-header {
+      background: var(--navy-900);
+      border-bottom: 1px solid var(--white-15);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .app-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .app-header img {
+      height: 36px;
+    }
+
+    .app-header h1 {
+      color: var(--gold);
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--white-70);
+    }
+
+    /* ═══════════════════════════════════════════
+       NAVIGATION TABS
+       ═══════════════════════════════════════════ */
+    .nav-bar {
+      background: var(--navy-800);
+      border-bottom: 1px solid var(--white-15);
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+    }
+
+    .nav-tab {
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--white-70);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .nav-tab:hover { color: var(--white); }
+    .nav-tab.active {
+      color: var(--gold);
+      border-bottom-color: var(--gold);
+    }
+
+    /* ═══════════════════════════════════════════
+       MAIN CONTENT
+       ═══════════════════════════════════════════ */
+    .app-content {
+      flex: 1;
+      padding: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* ═══════════════════════════════════════════
+       CONNECTION TEST DASHBOARD
+       ═══════════════════════════════════════════ */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--navy-800);
+      border: 1px solid var(--white-15);
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .stat-card .label {
+      font-size: 13px;
+      color: var(--white-70);
+      margin-bottom: 4px;
+    }
+
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--gold);
+    }
+
+    .stat-card .status {
+      font-size: 12px;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-dot.ok { background: var(--green); }
+    .status-dot.error { background: var(--red); }
+    .status-dot.loading { background: var(--amber); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ═══════════════════════════════════════════
+       DATA TABLE PREVIEW
+       ═══════════════════════════════════════════ */
+    .section-title {
+      color: var(--gold);
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--white-15);
+    }
+
+    .data-table-wrapper {
+      overflow-x: auto;
+      margin-bottom: 24px;
+      border-radius: 8px;
+      border: 1px solid var(--white-15);
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .data-table thead th {
+      background: var(--navy-900);
+      color: var(--gold);
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 500;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--white-15);
+    }
+
+    .data-table tbody td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--white-08);
+      color: var(--white);
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .data-table tbody tr:hover {
+      background: var(--white-08);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 24px;
+      color: var(--white-40);
+    }
+
+    .log-area {
+      background: var(--navy-900);
+      border: 1px solid var(--white-15);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      color: var(--white-70);
+      max-height: 300px;
+      overflow-y: auto;
+      line-height: 1.6;
+      margin-top: 24px;
+    }
+
+    .log-area .log-ok { color: var(--green); }
+    .log-area .log-err { color: var(--red); }
+    .log-area .log-warn { color: var(--amber); }
+
+    /* ═══════════════════════════════════════════
+       RESPONSIVE
+       ═══════════════════════════════════════════ */
+    @media (max-width: 600px) {
+      .app-header { padding: 12px 16px; }
+      .app-content { padding: 16px; }
+      .nav-tab { padding: 10px 12px; font-size: 12px; }
+      .dashboard-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════
+       SCREEN 1: PASSWORD GATE
+       ═══════════════════════════════════════════ -->
+  <div id="screen-password" class="screen screen-center active">
+    <img src="logo_vectorizado_2.png" alt="Rizkora" class="logo"
+         onerror="this.style.display='none'">
+    <div class="card">
+      <h2>Gestor de Cartera</h2>
+      <p>Acceso exclusivo para asesores Rizkora. Ingresa la contraseña para continuar.</p>
+      <div class="input-group">
+        <label>Contraseña</label>
+        <input type="password" id="input-password" placeholder="Ingresa la contraseña"
+               onkeydown="if(event.key==='Enter')verificarPassword()">
+      </div>
+      <button class="btn btn-primary" onclick="verificarPassword()">Ingresar</button>
+      <div id="error-password" class="error-msg">Contraseña incorrecta</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       SCREEN 2: MICROSOFT LOGIN
+       ═══════════════════════════════════════════ -->
+  <div id="screen-login" class="screen screen-center">
+    <img src="logo_vectorizado_2.png" alt="Rizkora" class="logo"
+         onerror="this.style.display='none'">
+    <div class="card">
+      <h2>Conectar con Microsoft 365</h2>
+      <p>Necesitamos acceso a tu cuenta de Microsoft para leer y escribir en el archivo Excel de OneDrive.</p>
+      <button class="btn btn-microsoft" onclick="loginMicrosoft()">
+        <svg width="20" height="20" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
+        Iniciar sesión con Microsoft
+      </button>
+      <div id="error-login" class="error-msg"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       SCREEN 3: APP PRINCIPAL
+       ═══════════════════════════════════════════ -->
+  <div id="screen-app" class="screen screen-app">
+    <!-- Header -->
+    <div class="app-header">
+      <div class="app-header-left">
+        <img src="logo_vectorizado_2.png" alt="Rizkora"
+             onerror="this.style.display='none'">
+        <h1>Gestor de Cartera</h1>
+      </div>
+      <div class="user-info">
+        <span id="user-name"></span>
+        <button class="btn btn-logout" onclick="cerrarSesion()">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav-bar" id="nav-bar">
+      <button class="nav-tab active" data-tab="dashboard" onclick="switchTab('dashboard')">📊 Conexión</button>
+      <button class="nav-tab" data-tab="prospectos" onclick="switchTab('prospectos')">👥 Prospectos</button>
+      <button class="nav-tab" data-tab="seguimiento" onclick="switchTab('seguimiento')">📞 Seguimiento</button>
+      <button class="nav-tab" data-tab="registro" onclick="switchTab('registro')">👤 Registro</button>
+      <button class="nav-tab" data-tab="consulta" onclick="switchTab('consulta')">🔍 Consulta</button>
+      <button class="nav-tab" data-tab="poliza" onclick="switchTab('poliza')">🆕 Póliza</button>
+      <button class="nav-tab" data-tab="renovaciones" onclick="switchTab('renovaciones')">🔄 Renovaciones</button>
+      <button class="nav-tab" data-tab="cobranza" onclick="switchTab('cobranza')">💰 Cobranza</button>
+      <button class="nav-tab" data-tab="operacion" onclick="switchTab('operacion')">💰 Operación</button>
+    </div>
+
+    <!-- Content -->
+    <div class="app-content" id="app-content">
+      <!-- Content rendered dynamically -->
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       JAVASCRIPT
+       ═══════════════════════════════════════════ -->
+  <script>
+    // ═══════════════════════════════════════════
+    // CONFIGURACIÓN — EDITAR ESTOS VALORES
+    // ═══════════════════════════════════════════
+    const CONFIG = {
+      // Azure AD — pegar los IDs del App Registration
+      clientId: 'f6e76cc9-ea19-4d99-afdf-650995d11693',
+      tenantId: '6efacb63-8804-4b00-84bc-f3d16bb89726',
+      redirectUri: 'https://rcvptt-hue.github.io/base_polizas_emalc/',
+
+      // OneDrive — ruta al archivo Excel
+      filePath: '0_RIZKORA/Rizkora/base_polizas.xlsx',
+
+      // Contraseña de acceso (cortina, misma lógica que asesoría)
+      appPassword: 'rizkora2025',
+
+      // Nombres de las tablas en Excel (deben coincidir exactamente)
+      tables: ['Prospectos', 'Polizas', 'Cobranza', 'Seguimiento', 'Operacion']
+    };
+
+    // ═══════════════════════════════════════════
+    // ESTADO GLOBAL
+    // ═══════════════════════════════════════════
+    let msalInstance = null;
+    let currentAccount = null;
+    let accessToken = null;
+    let activeTab = 'dashboard';
+
+    // Cache de datos en memoria
+    const DATA = {
+      Prospectos: { columns: [], rows: [] },
+      Polizas: { columns: [], rows: [] },
+      Cobranza: { columns: [], rows: [] },
+      Seguimiento: { columns: [], rows: [] },
+      Operacion: { columns: [], rows: [] }
+    };
+
+    // ═══════════════════════════════════════════
+    // MSAL — INICIALIZACIÓN
+    // ═══════════════════════════════════════════
+    const msalConfig = {
+      auth: {
+        clientId: CONFIG.clientId,
+        authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+        redirectUri: CONFIG.redirectUri,
+      },
+      cache: {
+        cacheLocation: 'sessionStorage',
+        storeAuthStateInCookie: false,
+      }
+    };
+
+    async function initMSAL() {
+      try {
+        msalInstance = new msal.PublicClientApplication(msalConfig);
+        await msalInstance.initialize();
+
+        // Verificar si hay sesión existente
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          currentAccount = accounts[0];
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.error('Error inicializando MSAL:', e);
+        return false;
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // PANTALLA 1: PASSWORD GATE
+    // ═══════════════════════════════════════════
+    function verificarPassword() {
+      const input = document.getElementById('input-password');
+      const error = document.getElementById('error-password');
+
+      if (input.value === CONFIG.appPassword) {
+        error.classList.remove('visible');
+        showScreen('screen-login');
+        initMSAL().then(hasSession => {
+          if (hasSession) {
+            // Ya hay sesión, ir directo a la app
+            entrarApp();
+          }
+        });
+      } else {
+        error.classList.add('visible');
+        input.value = '';
+        input.focus();
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // PANTALLA 2: LOGIN MICROSOFT
+    // ═══════════════════════════════════════════
+    async function loginMicrosoft() {
+      const errorEl = document.getElementById('error-login');
+      errorEl.classList.remove('visible');
+
+      try {
+        if (!msalInstance) await initMSAL();
+
+        const loginResponse = await msalInstance.loginPopup({
+          scopes: ['Files.ReadWrite', 'User.Read']
+        });
+
+        currentAccount = loginResponse.account;
+        accessToken = loginResponse.accessToken;
+        entrarApp();
+
+      } catch (e) {
+        console.error('Error en login:', e);
+        errorEl.textContent = e.message || 'Error al iniciar sesión. Verifica que el popup no esté bloqueado.';
+        errorEl.classList.add('visible');
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // OBTENER TOKEN (silencioso o popup)
+    // ═══════════════════════════════════════════
+    async function getAccessToken() {
+      if (!msalInstance || !currentAccount) throw new Error('No hay sesión activa');
+
+      const tokenRequest = {
+        scopes: ['Files.ReadWrite'],
+        account: currentAccount
+      };
+
+      try {
+        const response = await msalInstance.acquireTokenSilent(tokenRequest);
+        accessToken = response.accessToken;
+        return accessToken;
+      } catch (e) {
+        // Si falla silencioso, intentar popup
+        const response = await msalInstance.acquireTokenPopup(tokenRequest);
+        accessToken = response.accessToken;
+        return accessToken;
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // MICROSOFT GRAPH API — CONECTOR
+    // ═══════════════════════════════════════════
+    const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+    const FILE_PATH = `/me/drive/root:/${CONFIG.filePath}:`;
+
+    async function graphAPI(endpoint, method = 'GET', body = null) {
+      const token = await getAccessToken();
+
+      const options = {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      };
+
+      if (body) options.body = JSON.stringify(body);
+
+      const response = await fetch(`${GRAPH_BASE}${endpoint}`, options);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const msg = errorData.error?.message || `HTTP ${response.status}`;
+        throw new Error(`Graph API error: ${msg}`);
+      }
+
+      // DELETE returns 204 No Content
+      if (response.status === 204) return null;
+      return response.json();
+    }
+
+    // ═══════════════════════════════════════════
+    // CRUD — OPERACIONES CON TABLAS
+    // ═══════════════════════════════════════════
+
+    /**
+     * Leer columnas de una tabla
+     */
+    async function readColumns(tableName) {
+      const data = await graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/columns`);
+      return data.value.map(col => col.name);
+    }
+
+    /**
+     * Leer todas las filas de una tabla
+     * Devuelve array de objetos {columna: valor}
+     */
+    async function readTable(tableName) {
+      const columns = await readColumns(tableName);
+      const data = await graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/rows`);
+
+      const rows = (data.value || []).map(row => {
+        const obj = {};
+        columns.forEach((col, i) => {
+          obj[col] = row.values[0][i];
+        });
+        return obj;
+      });
+
+      return { columns, rows };
+    }
+
+    /**
+     * Agregar una fila a una tabla
+     * @param {string} tableName
+     * @param {Array} values — array de valores en orden de columnas
+     */
+    async function addRow(tableName, values) {
+      return graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/rows/add`, 'POST', {
+        values: [values]
+      });
+    }
+
+    /**
+     * Actualizar una fila por índice
+     * @param {string} tableName
+     * @param {number} index — índice base 0
+     * @param {Array} values — array de valores en orden de columnas
+     */
+    async function updateRow(tableName, index, values) {
+      return graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/rows/itemAt(index=${index})`, 'PATCH', {
+        values: [values]
+      });
+    }
+
+    /**
+     * Eliminar una fila por índice
+     */
+    async function deleteRow(tableName, index) {
+      return graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/rows/itemAt(index=${index})`, 'DELETE');
+    }
+
+    // ═══════════════════════════════════════════
+    // UI — UTILIDADES
+    // ═══════════════════════════════════════════
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function switchTab(tabName) {
+      activeTab = tabName;
+      document.querySelectorAll('.nav-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tabName);
+      });
+      renderActiveTab();
+    }
+
+    function escapeHTML(str) {
+      if (str == null) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ═══════════════════════════════════════════
+    // ENTRAR A LA APP
+    // ═══════════════════════════════════════════
+    async function entrarApp() {
+      document.getElementById('user-name').textContent = currentAccount.name || currentAccount.username;
+      showScreen('screen-app');
+      renderActiveTab();
+    }
+
+    function cerrarSesion() {
+      if (msalInstance) {
+        msalInstance.logoutPopup().catch(() => {});
+      }
+      sessionStorage.clear();
+      currentAccount = null;
+      accessToken = null;
+      showScreen('screen-password');
+      document.getElementById('input-password').value = '';
+    }
+
+    // ═══════════════════════════════════════════
+    // RENDER — TAB ACTIVA
+    // ═══════════════════════════════════════════
+    function renderActiveTab() {
+      const content = document.getElementById('app-content');
+
+      switch (activeTab) {
+        case 'dashboard':
+          renderDashboard(content);
+          break;
+        default:
+          content.innerHTML = `
+            <div class="empty-state">
+              <p style="font-size:48px;margin-bottom:16px">🚧</p>
+              <p style="font-size:16px;color:var(--white-70)">
+                Sección <strong style="color:var(--gold)">${escapeHTML(activeTab)}</strong> — en construcción
+              </p>
+              <p style="font-size:13px;margin-top:8px">
+                Esta tab se construirá en la siguiente fase. Por ahora, usa la pestaña
+                <strong style="color:var(--gold)">📊 Conexión</strong> para verificar que todo funciona.
+              </p>
+            </div>`;
+          break;
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // DASHBOARD — TEST DE CONEXIÓN
+    // ═══════════════════════════════════════════
+    async function renderDashboard(container) {
+      container.innerHTML = `
+        <div class="section-title">Test de conexión — OneDrive Excel</div>
+        <p style="color:var(--white-70);margin-bottom:20px;font-size:14px">
+          Verificando acceso al archivo <code style="background:var(--white-08);padding:2px 6px;border-radius:4px">${escapeHTML(CONFIG.filePath)}</code>
+          y lectura de las 5 tablas.
+        </p>
+
+        <div class="dashboard-grid" id="dashboard-cards">
+          ${CONFIG.tables.map(t => `
+            <div class="stat-card" id="card-${t}">
+              <div class="label">${escapeHTML(t)}</div>
+              <div class="value" id="count-${t}">—</div>
+              <div class="status">
+                <span class="status-dot loading" id="dot-${t}"></span>
+                <span id="status-${t}">Cargando...</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <button class="btn btn-secondary" onclick="renderDashboard(document.getElementById('app-content'))" style="width:auto;margin-bottom:16px">
+          🔄 Recargar datos
+        </button>
+
+        <div class="section-title" style="margin-top:24px">Vista previa de datos</div>
+        <div id="preview-tables"></div>
+
+        <div class="section-title" style="margin-top:24px">Log de conexión</div>
+        <div class="log-area" id="connection-log"></div>
+      `;
+
+      const logEl = document.getElementById('connection-log');
+
+      function log(msg, type = '') {
+        const cls = type === 'ok' ? 'log-ok' : type === 'err' ? 'log-err' : type === 'warn' ? 'log-warn' : '';
+        const time = new Date().toLocaleTimeString('es-MX');
+        logEl.innerHTML += `<div class="${cls}">[${time}] ${escapeHTML(msg)}</div>`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      log('Iniciando test de conexión...');
+      log(`Archivo: ${CONFIG.filePath}`);
+      log(`Usuario: ${currentAccount.name || currentAccount.username}`);
+      log(`Tenant: ${CONFIG.tenantId}`);
+
+      let previewHTML = '';
+
+      for (const tableName of CONFIG.tables) {
+        const dot = document.getElementById(`dot-${tableName}`);
+        const countEl = document.getElementById(`count-${tableName}`);
+        const statusEl = document.getElementById(`status-${tableName}`);
+
+        try {
+          log(`Leyendo tabla "${tableName}"...`);
+          const result = await readTable(tableName);
+
+          DATA[tableName] = result;
+          countEl.textContent = result.rows.length;
+          dot.className = 'status-dot ok';
+          statusEl.textContent = `${result.columns.length} columnas`;
+
+          log(`✓ ${tableName}: ${result.rows.length} filas, ${result.columns.length} columnas`, 'ok');
+
+          // Preview table (first 5 rows)
+          if (result.rows.length > 0) {
+            const previewRows = result.rows.slice(0, 5);
+            previewHTML += `
+              <div style="margin-bottom:24px">
+                <div style="color:var(--gold);font-size:14px;font-weight:500;margin-bottom:8px">
+                  ${escapeHTML(tableName)} (primeras ${previewRows.length} de ${result.rows.length})
+                </div>
+                <div class="data-table-wrapper">
+                  <table class="data-table">
+                    <thead><tr>
+                      ${result.columns.map(c => `<th>${escapeHTML(c)}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                      ${previewRows.map(row => `<tr>
+                        ${result.columns.map(c => `<td>${escapeHTML(row[c])}</td>`).join('')}
+                      </tr>`).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>`;
+          } else {
+            previewHTML += `
+              <div style="margin-bottom:24px">
+                <div style="color:var(--gold);font-size:14px;font-weight:500;margin-bottom:8px">
+                  ${escapeHTML(tableName)}
+                </div>
+                <div class="empty-state" style="padding:20px">Tabla vacía — los encabezados están listos</div>
+              </div>`;
+          }
+
+        } catch (e) {
+          countEl.textContent = '✗';
+          dot.className = 'status-dot error';
+          statusEl.textContent = 'Error';
+          log(`✗ ${tableName}: ${e.message}`, 'err');
+
+          previewHTML += `
+            <div style="margin-bottom:24px">
+              <div style="color:var(--red);font-size:14px;font-weight:500;margin-bottom:8px">
+                ${escapeHTML(tableName)} — Error
+              </div>
+              <div style="background:var(--red-bg);padding:12px;border-radius:8px;font-size:13px;color:var(--red)">
+                ${escapeHTML(e.message)}
+              </div>
+            </div>`;
+        }
+      }
+
+      document.getElementById('preview-tables').innerHTML = previewHTML;
+
+      // Summary
+      const allOk = CONFIG.tables.every(t => DATA[t].columns.length > 0);
+      if (allOk) {
+        log('═══════════════════════════════', 'ok');
+        log('✓ CONEXIÓN EXITOSA — Todas las tablas accesibles', 'ok');
+        log('═══════════════════════════════', 'ok');
+      } else {
+        log('═══════════════════════════════', 'warn');
+        log('⚠ Algunas tablas tuvieron errores. Revisa los mensajes arriba.', 'warn');
+        log('Posibles causas:', 'warn');
+        log('  1. La tabla no tiene nombre (Insert → Table → Table Name)', 'warn');
+        log('  2. El nombre no coincide exactamente (mayúsculas importan)', 'warn');
+        log('  3. El archivo no está en la ruta correcta en OneDrive', 'warn');
+        log('═══════════════════════════════', 'warn');
+      }
+    }
+  </script>
+</body>
+</html>
