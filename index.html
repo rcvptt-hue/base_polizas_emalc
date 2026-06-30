@@ -662,7 +662,10 @@
       aseguradora: ['ALLIANZ','ATLAS','AXA','BANORTE','GNP','HIR','PREVEM','QUALITAS','SKANDIA','THONA','ZURICH'],
       banco: ['NINGUNO','AMERICAN EXPRESS','BBVA','BANAMEX','BANCOMER','BANREGIO','HSBC','SANTANDER'],
       moneda: ['MXN','UDIS','DLLS'],
-      estatusSeguimiento: ['Seguimiento','Descartado','Convertido']
+      estatusSeguimiento: ['Seguimiento','Descartado','Convertido'],
+      estadoPoliza: ['VIGENTE','CANCELADO','TERMINADO'],
+      periodicidad: ['CONTADO','MENSUAL','TRIMESTRAL','SEMESTRAL'],
+      claveEmision: ['Emilia Alcocer','José Carlos Ibarra','Suemy Alcocer']
     };
 
     // ═══════════════════════════════════════════
@@ -846,6 +849,29 @@
     /**
      * Leer columnas de una tabla
      */
+    // ═══════════════════════════════════════════
+    // CONVERSIÓN DE FECHAS EXCEL → dd/mm/yyyy
+    // ═══════════════════════════════════════════
+
+    /** Columnas que contienen fechas (match parcial, case-insensitive) */
+    const DATE_KEYWORDS = ['fecha','vigencia','nacimiento','seguimiento','vencimiento','contacto','registro'];
+
+    function isDateColumn(colName) {
+      const lower = (colName || '').toLowerCase();
+      return DATE_KEYWORDS.some(k => lower.includes(k));
+    }
+
+    /** Convierte serial de Excel (ej: 46149) a "dd/mm/yyyy" */
+    function excelSerialToDateStr(serial) {
+      if (typeof serial !== 'number' || serial < 1 || serial > 100000) return serial;
+      // 25569 = días entre epoch de Excel (1 ene 1900) y epoch Unix (1 ene 1970)
+      const date = new Date((serial - 25569) * 86400000);
+      const d = date.getUTCDate();
+      const m = date.getUTCMonth() + 1;
+      const y = date.getUTCFullYear();
+      return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+    }
+
     async function readColumns(tableName) {
       const data = await graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/columns`);
       return data.value.map(col => col.name);
@@ -853,7 +879,7 @@
 
     /**
      * Leer todas las filas de una tabla
-     * Devuelve array de objetos {columna: valor}
+     * Convierte automáticamente seriales de Excel a dd/mm/yyyy en columnas de fecha
      */
     async function readTable(tableName) {
       const columns = await readColumns(tableName);
@@ -862,7 +888,12 @@
       const rows = (data.value || []).map(row => {
         const obj = {};
         columns.forEach((col, i) => {
-          obj[col] = row.values[0][i];
+          let val = row.values[0][i];
+          // Auto-convertir seriales de Excel en columnas de fecha
+          if (isDateColumn(col) && typeof val === 'number') {
+            val = excelSerialToDateStr(val);
+          }
+          obj[col] = val;
         });
         return obj;
       });
@@ -957,6 +988,9 @@
           break;
         case 'seguimiento':
           renderSeguimiento(content);
+          break;
+        case 'registro':
+          renderRegistro(content);
           break;
         default:
           content.innerHTML = `
@@ -1657,6 +1691,201 @@
 
       } catch (e) {
         showToast('Error al eliminar: ' + e.message, 'err');
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // REGISTRO DE CLIENTE (PRIMERA PÓLIZA)
+    // ═══════════════════════════════════════════
+
+    const POLIZAS_COLS = [
+      'Tipo Persona','Nombre/Razón Social','No. Póliza','Producto','Inicio Vigencia',
+      'Fin Vigencia','RFC','Forma de Pago','Banco','Periodicidad','Prima Total Emitida',
+      'Prima Neta','Primer Pago','Pagos Subsecuentes','Aseguradora','% Comisión','Estado',
+      'Contacto','Dirección','Teléfono','Correo','Fecha Nacimiento','Moneda','Referenciador',
+      'Clave de Emisión'
+    ];
+
+    async function renderRegistro(container) {
+      await ensureData('Prospectos');
+      await ensureData('Polizas');
+
+      const prospectos = DATA.Prospectos.rows;
+
+      if (!prospectos.length) {
+        container.innerHTML = `
+          <div class="section-title">👤 Registro de Cliente (Primera Póliza)</div>
+          <div class="empty-state">
+            <p style="font-size:48px;margin-bottom:16px">📋</p>
+            <p style="font-size:16px;color:var(--white-70)">No hay prospectos disponibles para convertir en clientes.</p>
+            <p style="font-size:13px;margin-top:8px">Agrega prospectos primero en la pestaña <strong style="color:var(--gold)">👥 Prospectos</strong>.</p>
+          </div>`;
+        return;
+      }
+
+      const nombres = prospectos.map(r => r['Nombre/Razón Social']).filter(Boolean);
+
+      container.innerHTML = `
+        <div class="section-title">👤 Registro de Cliente (Primera Póliza)</div>
+        <p style="color:var(--white-70);margin-bottom:20px;font-size:14px">
+          Selecciona un prospecto para convertirlo en cliente y crear su primera póliza.
+          Los datos del prospecto se pre-llenan automáticamente.
+        </p>
+
+        <div class="form-panel" style="margin-bottom:16px">
+          ${selectHTML('r-prospecto', nombres, '', 'Seleccionar Prospecto *', 'Seleccionar...')}
+        </div>
+
+        <div id="registro-form-wrapper"></div>
+      `;
+
+      // Listener para cuando cambia el prospecto
+      document.getElementById('r-prospecto').addEventListener('change', function() {
+        const nombre = this.value;
+        if (!nombre) {
+          document.getElementById('registro-form-wrapper').innerHTML = '';
+          return;
+        }
+        const p = prospectos.find(r => r['Nombre/Razón Social'] === nombre);
+        if (p) mostrarFormRegistro(p);
+      });
+    }
+
+    function mostrarFormRegistro(p) {
+      document.getElementById('registro-form-wrapper').innerHTML = `
+        <div class="form-panel">
+          <div class="section-title" style="border:none;margin-bottom:16px">
+            📄 Creando primera póliza para: <strong>${escapeHTML(p['Nombre/Razón Social'])}</strong>
+          </div>
+
+          <div style="color:var(--gold);font-size:13px;font-weight:500;margin-bottom:12px">Datos del prospecto (pre-llenados)</div>
+          <div class="form-grid" style="margin-bottom:20px">
+            ${selectHTML('r-tipo', OPCIONES.persona, p['Tipo Persona'], 'Tipo Persona')}
+            ${inputHTML('r-rfc', 'RFC', p['RFC'])}
+            ${inputHTML('r-tel', 'Teléfono', p['Teléfono'])}
+            ${inputHTML('r-correo', 'Correo', p['Correo'])}
+            ${dateInputHTML('r-fecha-nac', 'Fecha Nacimiento', p['Fecha Nacimiento'])}
+            ${inputHTML('r-direccion', 'Dirección', p['Dirección'], 'Calle, Ciudad, CP')}
+            ${inputHTML('r-referenciador', 'Referenciador', p['Referenciador'])}
+          </div>
+
+          <div style="color:var(--gold);font-size:13px;font-weight:500;margin-bottom:12px;padding-top:12px;border-top:1px solid var(--white-15)">Datos de la póliza</div>
+          <div class="form-grid">
+            ${inputHTML('r-no-poliza', 'No. Póliza *', '', 'Ingrese número de póliza')}
+            ${selectHTML('r-producto', OPCIONES.producto, p['Producto'], 'Producto')}
+            ${dateInputHTML('r-inicio', 'Inicio Vigencia *')}
+            ${dateInputHTML('r-fin', 'Fin Vigencia *')}
+            ${selectHTML('r-pago', OPCIONES.pago, '', 'Forma de Pago')}
+            ${selectHTML('r-banco', OPCIONES.banco, '', 'Banco')}
+            ${selectHTML('r-periodicidad', OPCIONES.periodicidad, '', 'Periodicidad')}
+            ${selectHTML('r-moneda', OPCIONES.moneda, '', 'Moneda')}
+            ${inputHTML('r-prima-total', 'Prima Total Emitida', '', 'Monto')}
+            ${inputHTML('r-prima-neta', 'Prima Neta', '', 'Monto')}
+            ${inputHTML('r-primer-pago', 'Primer Pago', '', 'Monto')}
+            ${inputHTML('r-pagos-sub', 'Pagos Subsecuentes', '', 'Monto')}
+            ${selectHTML('r-aseguradora', OPCIONES.aseguradora, '', 'Aseguradora')}
+            ${inputHTML('r-comision', '% Comisión', '', 'Ej: 10.5')}
+            ${selectHTML('r-estado', OPCIONES.estadoPoliza, 'VIGENTE', 'Estado')}
+            ${inputHTML('r-contacto', 'Contacto', '', 'Persona de contacto')}
+            ${selectHTML('r-clave', OPCIONES.claveEmision, '', 'Clave de Emisión')}
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="guardarRegistroCliente()">
+              💾 Registrar Cliente y Póliza
+            </button>
+            <button class="btn btn-secondary" onclick="document.getElementById('registro-form-wrapper').innerHTML='';document.getElementById('r-prospecto').value=''">
+              ❌ Cancelar
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function guardarRegistroCliente() {
+      const nombreProspecto = document.getElementById('r-prospecto')?.value || '';
+      const noPoliza = (document.getElementById('r-no-poliza')?.value || '').trim();
+
+      if (!nombreProspecto) { showToast('Selecciona un prospecto', 'err'); return; }
+      if (!noPoliza) { showToast('El número de póliza es obligatorio', 'err'); return; }
+
+      // Validar que no exista el número de póliza
+      const existe = DATA.Polizas.rows.some(r =>
+        String(r['No. Póliza'] || '').trim() === noPoliza
+      );
+      if (existe) { showToast('⚠️ Este número de póliza ya existe', 'err'); return; }
+
+      // Validar fechas obligatorias
+      const fechasReq = [
+        { id: 'r-inicio', label: 'Inicio Vigencia' },
+        { id: 'r-fin', label: 'Fin Vigencia' }
+      ];
+      for (const f of fechasReq) {
+        const v = document.getElementById(f.id)?.value || '';
+        if (!v.trim()) { showToast(`${f.label} es obligatorio`, 'err'); return; }
+        const r = normalizeFecha(v);
+        if (!r.ok) { showToast(`${f.label}: ${r.error}`, 'err'); return; }
+        document.getElementById(f.id).value = r.value;
+      }
+
+      // Normalizar fecha nacimiento si tiene valor
+      const fnEl = document.getElementById('r-fecha-nac');
+      if (fnEl?.value?.trim()) {
+        const r = normalizeFecha(fnEl.value);
+        if (!r.ok) { showToast('Fecha Nacimiento: ' + r.error, 'err'); return; }
+        fnEl.value = r.value;
+      }
+
+      // Construir array en orden de columnas
+      const values = [
+        document.getElementById('r-tipo')?.value || '',
+        nombreProspecto,
+        noPoliza,
+        document.getElementById('r-producto')?.value || '',
+        document.getElementById('r-inicio')?.value || '',
+        document.getElementById('r-fin')?.value || '',
+        document.getElementById('r-rfc')?.value || '',
+        document.getElementById('r-pago')?.value || '',
+        document.getElementById('r-banco')?.value || '',
+        document.getElementById('r-periodicidad')?.value || '',
+        document.getElementById('r-prima-total')?.value || '',
+        document.getElementById('r-prima-neta')?.value || '',
+        document.getElementById('r-primer-pago')?.value || '',
+        document.getElementById('r-pagos-sub')?.value || '',
+        document.getElementById('r-aseguradora')?.value || '',
+        document.getElementById('r-comision')?.value || '',
+        document.getElementById('r-estado')?.value || '',
+        document.getElementById('r-contacto')?.value || '',
+        document.getElementById('r-direccion')?.value || '',
+        document.getElementById('r-tel')?.value || '',
+        document.getElementById('r-correo')?.value || '',
+        document.getElementById('r-fecha-nac')?.value || '',
+        document.getElementById('r-moneda')?.value || '',
+        document.getElementById('r-referenciador')?.value || '',
+        document.getElementById('r-clave')?.value || ''
+      ];
+
+      try {
+        // 1. Agregar póliza
+        await addRow('Polizas', values);
+
+        // 2. Eliminar prospecto de la tabla Prospectos
+        const prospIndex = DATA.Prospectos.rows.findIndex(r =>
+          r['Nombre/Razón Social'] === nombreProspecto
+        );
+        if (prospIndex >= 0) {
+          await deleteRow('Prospectos', prospIndex);
+        }
+
+        showToast('✅ Cliente registrado con su primera póliza');
+
+        // Recargar ambas tablas
+        DATA.Polizas = await readTable('Polizas');
+        DATA.Prospectos = await readTable('Prospectos');
+        renderRegistro(document.getElementById('app-content'));
+
+      } catch (e) {
+        showToast('Error al registrar: ' + e.message, 'err');
       }
     }
   </script>
