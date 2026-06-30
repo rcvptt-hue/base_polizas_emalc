@@ -437,6 +437,21 @@
     .input-group select:focus { border-color: var(--gold); }
     .input-group select option { background: var(--navy-800); color: var(--white); }
 
+    .toolbar select {
+      padding: 10px 14px;
+      background: var(--navy-800);
+      border: 1px solid var(--white-15);
+      border-radius: 8px;
+      color: var(--white);
+      font-size: 14px;
+      outline: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='1.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+    .toolbar select option { background: var(--navy-800); color: var(--white); }
+
     .input-group textarea {
       width: 100%;
       padding: 10px 14px;
@@ -1000,6 +1015,9 @@
           break;
         case 'renovaciones':
           renderRenovaciones(content);
+          break;
+        case 'cobranza':
+          renderCobranza(content);
           break;
         default:
           content.innerHTML = `
@@ -2357,7 +2375,7 @@
 
         <!-- Filtro -->
         <div class="toolbar">
-          <select id="filtro-renovaciones" onchange="filtrarRenovaciones()" style="padding:10px 14px;background:var(--white-08);border:1px solid var(--white-15);border-radius:8px;color:var(--white);font-size:14px">
+          <select id="filtro-renovaciones" onchange="filtrarRenovaciones()">
             <option value="todas">Todas (${conDias.length})</option>
             <option value="vencidas">⛔ Vencidas (${vencidas.length})</option>
             <option value="urgentes">🔴 Urgentes &lt;45d (${urgentes.length})</option>
@@ -2464,6 +2482,255 @@
         </div>
       `;
       document.getElementById('detalle-renovacion-wrapper').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ═══════════════════════════════════════════
+    // COBRANZA
+    // ═══════════════════════════════════════════
+
+    const COBRANZA_COLS = [
+      'No. Póliza','Mes Cobranza','Prima de Recibo','Monto Pagado','Fecha Pago',
+      'Estatus','Días Atraso','Fecha Vencimiento','Nombre/Razón Social','Días Restantes',
+      'Periodicidad','Moneda','Recibo','Clave de Emisión','Comentario'
+    ];
+
+    function fmtMonto(val) {
+      const n = parseFloat(String(val||'0').replace(/,/g,'').replace('$',''));
+      return isNaN(n) ? '0.00' : n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+
+    async function renderCobranza(container) {
+      await ensureData('Cobranza');
+      const rows = DATA.Cobranza.rows;
+
+      if (!rows.length) {
+        container.innerHTML = `
+          <div class="section-title">💰 Cobranza</div>
+          <div class="empty-state">
+            <p style="font-size:48px;margin-bottom:16px">📋</p>
+            <p style="color:var(--white-70)">No hay registros de cobranza.</p>
+            <p style="font-size:13px;margin-top:8px;color:var(--white-40)">
+              Los recibos se generarán con el motor de cálculo (en desarrollo) o puedes agregarlos manualmente en el Excel.
+            </p>
+          </div>`;
+        return;
+      }
+
+      // Calcular días transcurridos en vivo
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+      rows.forEach(r => {
+        const fv = parseDateDMY(String(r['Fecha Vencimiento']||''));
+        r._diasTranscurridos = fv ? Math.max(0, diasEntre(hoy, fv)) : null;
+      });
+
+      // Stats
+      const pendientes = rows.filter(r => (r['Estatus']||'').toLowerCase() === 'pendiente');
+      const vencidos = rows.filter(r => (r['Estatus']||'').toLowerCase() === 'vencido');
+      const pagados = rows.filter(r => (r['Estatus']||'').toLowerCase() === 'pagado');
+      const cancelados = rows.filter(r => (r['Estatus']||'').toLowerCase() === 'cancelado');
+
+      container.innerHTML = `
+        <div class="section-title">💰 Cobranza</div>
+
+        <div class="dashboard-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="label">Total Recibos</div>
+            <div class="value">${rows.length}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Pendientes</div>
+            <div class="value" style="color:var(--amber)">${pendientes.length}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Vencidos</div>
+            <div class="value" style="color:var(--red)">${vencidos.length}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Pagados</div>
+            <div class="value" style="color:var(--green)">${pagados.length}</div>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="toolbar">
+          <select id="filtro-cobranza" onchange="filtrarCobranza()">
+            <option value="pendiente-vencido">Pendientes + Vencidos (${pendientes.length + vencidos.length})</option>
+            <option value="pendiente">Solo Pendientes (${pendientes.length})</option>
+            <option value="vencido">Solo Vencidos (${vencidos.length})</option>
+            <option value="pagado">Pagados (${pagados.length})</option>
+            <option value="todos">Todos (${rows.length})</option>
+          </select>
+          <input type="text" class="search-input" id="search-cobranza"
+                 placeholder="🔍 Buscar por póliza, nombre, recibo..."
+                 oninput="filtrarCobranza()">
+        </div>
+
+        <div id="table-cobranza-wrapper"></div>
+
+        <!-- Registrar Pago -->
+        <div id="pago-form-wrapper"></div>
+
+        <!-- Leyenda -->
+        <div style="margin-top:16px;font-size:12px;color:var(--white-40);display:flex;gap:16px;flex-wrap:wrap">
+          <span>🟢 &lt;5 días</span>
+          <span>🟡 5-10 días</span>
+          <span>🟠 11-20 días</span>
+          <span>🔴 &gt;20 días</span>
+          <span>⬛ Vencido</span>
+          <span>✅ Pagado</span>
+        </div>
+      `;
+
+      window._cobranzaData = rows;
+      filtrarCobranza();
+    }
+
+    function filtrarCobranza() {
+      const filtro = document.getElementById('filtro-cobranza')?.value || 'pendiente-vencido';
+      const q = (document.getElementById('search-cobranza')?.value || '').toLowerCase();
+      let rows = window._cobranzaData || [];
+
+      if (filtro === 'pendiente-vencido') {
+        rows = rows.filter(r => ['pendiente','vencido'].includes((r['Estatus']||'').toLowerCase()));
+      } else if (filtro !== 'todos') {
+        rows = rows.filter(r => (r['Estatus']||'').toLowerCase() === filtro);
+      }
+
+      if (q) {
+        rows = rows.filter(r =>
+          ['No. Póliza','Nombre/Razón Social','Recibo','Clave de Emisión','Comentario'].some(c =>
+            String(r[c]||'').toLowerCase().includes(q)
+          )
+        );
+      }
+
+      renderTablaCobranza(rows);
+    }
+
+    function renderTablaCobranza(rows) {
+      const wrapper = document.getElementById('table-cobranza-wrapper');
+      if (!rows.length) {
+        wrapper.innerHTML = '<div class="empty-state" style="padding:24px">No hay recibos en esta categoría.</div>';
+        return;
+      }
+
+      const cols = ['Recibo','No. Póliza','Nombre/Razón Social','Periodicidad','Moneda',
+                    'Prima de Recibo','Monto Pagado','Fecha Vencimiento','Estatus','Comentario'];
+
+      wrapper.innerHTML = `
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              ${cols.map(c => `<th>${escapeHTML(c)}</th>`).join('')}
+              <th>Días</th>
+              <th style="text-align:center">Acc.</th>
+            </tr></thead>
+            <tbody>
+              ${rows.map(row => {
+                const realIdx = DATA.Cobranza.rows.indexOf(row);
+                const est = (row['Estatus']||'').toLowerCase();
+                const dt = row._diasTranscurridos || 0;
+
+                let rowStyle = '';
+                if (est === 'pagado') rowStyle = 'background:var(--green-bg);';
+                else if (est === 'cancelado') rowStyle = 'background:var(--white-08);opacity:0.6;';
+                else if (est === 'vencido') rowStyle = 'background:rgba(139,0,0,0.3);';
+                else if (dt >= 20) rowStyle = 'background:var(--red-bg);';
+                else if (dt >= 11) rowStyle = 'background:var(--amber-bg);';
+                else if (dt >= 5) rowStyle = 'background:rgba(255,243,205,0.15);';
+
+                return `<tr style="${rowStyle}">
+                  ${cols.map(c => {
+                    if (c === 'Prima de Recibo' || c === 'Monto Pagado')
+                      return `<td style="text-align:right">${fmtMonto(row[c])}</td>`;
+                    if (c === 'Estatus') {
+                      const cl = est==='pagado'?'color:var(--green)':est==='vencido'?'color:var(--red)':est==='pendiente'?'color:var(--amber)':'';
+                      return `<td style="${cl};font-weight:600">${escapeHTML(row[c])}</td>`;
+                    }
+                    return `<td>${escapeHTML(row[c])}</td>`;
+                  }).join('')}
+                  <td style="text-align:center;font-weight:600">${est==='pagado'?'✅':dt}</td>
+                  <td style="text-align:center">
+                    ${est !== 'pagado' && est !== 'cancelado'
+                      ? `<button class="btn-icon" title="Registrar pago" onclick="mostrarFormPago(${realIdx})">💵</button>`
+                      : ''}
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function mostrarFormPago(index) {
+      const r = DATA.Cobranza.rows[index];
+      if (!r) return;
+
+      const prima = parseFloat(String(r['Prima de Recibo']||'0').replace(/,/g,'')) || 0;
+
+      document.getElementById('pago-form-wrapper').innerHTML = `
+        <div class="form-panel" style="margin-top:16px">
+          <div class="section-title" style="border:none;margin-bottom:12px">
+            💵 Registrar Pago — Recibo #${escapeHTML(String(r['Recibo']))} · ${escapeHTML(r['No. Póliza'])} · ${escapeHTML(r['Nombre/Razón Social'])}
+          </div>
+
+          <div class="form-grid" style="gap:8px 24px;margin-bottom:16px">
+            <div><span style="color:var(--white-40);font-size:12px">Prima de Recibo</span><br><strong>${fmtMonto(r['Prima de Recibo'])} ${escapeHTML(r['Moneda']||'MXN')}</strong></div>
+            <div><span style="color:var(--white-40);font-size:12px">Fecha Vencimiento</span><br>${escapeHTML(r['Fecha Vencimiento'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Estatus Actual</span><br><strong style="color:var(--red)">${escapeHTML(r['Estatus'])}</strong></div>
+            <div><span style="color:var(--white-40);font-size:12px">Periodicidad</span><br>${escapeHTML(r['Periodicidad'])}</div>
+          </div>
+
+          <div class="form-grid">
+            ${inputHTML('pago-monto', 'Monto Pagado *', prima.toString(), 'Monto')}
+            ${dateInputHTML('pago-fecha', 'Fecha de Pago *', fechaHoy())}
+            <div class="input-group span-2">
+              <label>Comentario (opcional)</label>
+              <textarea id="pago-comentario" placeholder="Ej: Pago realizado con retraso...">${escapeHTML(r['Comentario']||'')}</textarea>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="guardarPago(${index})">💾 Registrar Pago</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('pago-form-wrapper').innerHTML=''">❌ Cancelar</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('pago-form-wrapper').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    async function guardarPago(index) {
+      const monto = (document.getElementById('pago-monto')?.value || '').trim();
+      const fecha = (document.getElementById('pago-fecha')?.value || '').trim();
+      const comentario = (document.getElementById('pago-comentario')?.value || '').trim();
+
+      if (!monto || parseFloat(monto) <= 0) { showToast('El monto pagado debe ser mayor a 0', 'err'); return; }
+      if (!fecha) { showToast('La fecha de pago es obligatoria', 'err'); return; }
+
+      const nf = normalizeFecha(fecha);
+      if (!nf.ok) { showToast('Fecha de pago: ' + nf.error, 'err'); return; }
+
+      const row = DATA.Cobranza.rows[index];
+      if (!row) return;
+
+      // Build updated values in column order
+      const values = COBRANZA_COLS.map(col => {
+        if (col === 'Monto Pagado') return monto;
+        if (col === 'Fecha Pago') return nf.value;
+        if (col === 'Estatus') return 'Pagado';
+        if (col === 'Días Atraso') return 0;
+        if (col === 'Comentario') return comentario || row['Comentario'] || '';
+        return row[col] ?? '';
+      });
+
+      try {
+        await updateRow('Cobranza', index, values);
+        showToast('✅ Pago registrado correctamente');
+        DATA.Cobranza = await readTable('Cobranza');
+        document.getElementById('pago-form-wrapper').innerHTML = '';
+        renderCobranza(document.getElementById('app-content'));
+      } catch (e) {
+        showToast('Error: ' + e.message, 'err');
+      }
     }
   </script>
 </body>
