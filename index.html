@@ -998,6 +998,9 @@
         case 'poliza':
           renderPolizaNueva(content);
           break;
+        case 'renovaciones':
+          renderRenovaciones(content);
+          break;
         default:
           content.innerHTML = `
             <div class="empty-state">
@@ -2280,6 +2283,187 @@
       } catch (e) {
         showToast('Error: ' + e.message, 'err');
       }
+    }
+
+    // ═══════════════════════════════════════════
+    // RENOVACIONES (PÓLIZAS POR VENCER)
+    // ═══════════════════════════════════════════
+
+    function parseDateDMY(str) {
+      if (!str || typeof str !== 'string') return null;
+      const parts = str.split('/');
+      if (parts.length !== 3) return null;
+      const d = parseInt(parts[0]), m = parseInt(parts[1]), y = parseInt(parts[2]);
+      if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
+      return new Date(y, m - 1, d);
+    }
+
+    function diasEntre(fecha, hoy) {
+      const diff = fecha.getTime() - hoy.getTime();
+      return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    }
+
+    async function renderRenovaciones(container) {
+      await ensureData('Polizas');
+      const polizas = DATA.Polizas.rows;
+
+      if (!polizas.length) {
+        container.innerHTML = `
+          <div class="section-title">🔄 Renovaciones</div>
+          <div class="empty-state"><p style="color:var(--white-70)">No hay pólizas registradas.</p></div>`;
+        return;
+      }
+
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+
+      // Calcular días restantes para cada póliza vigente
+      const conDias = polizas
+        .filter(r => (r['Estado']||'').toUpperCase() === 'VIGENTE')
+        .map(r => {
+          const finDate = parseDateDMY(String(r['Fin Vigencia'] || ''));
+          const dias = finDate ? diasEntre(finDate, hoy) : null;
+          return { ...r, _finDate: finDate, _dias: dias };
+        })
+        .filter(r => r._dias !== null)
+        .sort((a, b) => a._dias - b._dias);
+
+      // Categorías
+      const vencidas = conDias.filter(r => r._dias < 0);
+      const urgentes = conDias.filter(r => r._dias >= 0 && r._dias < 45);
+      const porRenovar = conDias.filter(r => r._dias >= 45 && r._dias <= 60);
+      const lejanas = conDias.filter(r => r._dias > 60);
+
+      container.innerHTML = `
+        <div class="section-title">🔄 Renovaciones (Pólizas por Vencer)</div>
+
+        <div class="dashboard-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="label">⛔ Vencidas</div>
+            <div class="value" style="color:var(--red)">${vencidas.length}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">🔴 Urgentes (&lt;45 días)</div>
+            <div class="value" style="color:var(--amber)">${urgentes.length}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">🟡 Por renovar (45-60 días)</div>
+            <div class="value" style="color:var(--gold)">${porRenovar.length}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">🟢 Lejanas (&gt;60 días)</div>
+            <div class="value" style="color:var(--green)">${lejanas.length}</div>
+          </div>
+        </div>
+
+        <!-- Filtro -->
+        <div class="toolbar">
+          <select id="filtro-renovaciones" onchange="filtrarRenovaciones()" style="padding:10px 14px;background:var(--white-08);border:1px solid var(--white-15);border-radius:8px;color:var(--white);font-size:14px">
+            <option value="todas">Todas (${conDias.length})</option>
+            <option value="vencidas">⛔ Vencidas (${vencidas.length})</option>
+            <option value="urgentes">🔴 Urgentes &lt;45d (${urgentes.length})</option>
+            <option value="renovar" selected>🟡 Por renovar 45-60d (${porRenovar.length})</option>
+            <option value="lejanas">🟢 Lejanas &gt;60d (${lejanas.length})</option>
+          </select>
+          <input type="text" class="search-input" id="search-renovaciones"
+                 placeholder="🔍 Buscar por nombre, póliza, producto..."
+                 oninput="filtrarRenovaciones()">
+        </div>
+
+        <div id="table-renovaciones-wrapper"></div>
+        <div id="detalle-renovacion-wrapper"></div>
+      `;
+
+      // Store in global for filtering
+      window._renovacionesData = { todas: conDias, vencidas, urgentes, renovar: porRenovar, lejanas };
+      filtrarRenovaciones();
+    }
+
+    function filtrarRenovaciones() {
+      const cat = document.getElementById('filtro-renovaciones')?.value || 'renovar';
+      const q = (document.getElementById('search-renovaciones')?.value || '').toLowerCase();
+      let rows = window._renovacionesData?.[cat] || [];
+
+      if (q) {
+        rows = rows.filter(r =>
+          ['Nombre/Razón Social','No. Póliza','Producto','Aseguradora'].some(c =>
+            String(r[c]||'').toLowerCase().includes(q)
+          )
+        );
+      }
+
+      renderTablaRenovaciones(rows);
+    }
+
+    function renderTablaRenovaciones(rows) {
+      const wrapper = document.getElementById('table-renovaciones-wrapper');
+      if (!rows.length) {
+        wrapper.innerHTML = '<div class="empty-state" style="padding:24px">No hay pólizas en esta categoría.</div>';
+        return;
+      }
+
+      const cols = ['Nombre/Razón Social','No. Póliza','Producto','Aseguradora','Fin Vigencia'];
+
+      wrapper.innerHTML = `
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              ${cols.map(c => `<th>${escapeHTML(c)}</th>`).join('')}
+              <th>Días</th>
+              <th style="text-align:center">Acc.</th>
+            </tr></thead>
+            <tbody>
+              ${rows.map(row => {
+                const d = row._dias;
+                const color = d < 0 ? 'var(--red)' : d < 45 ? 'var(--amber)' : d <= 60 ? 'var(--gold)' : 'var(--green)';
+                const bg = d < 0 ? 'var(--red-bg)' : d < 45 ? 'var(--amber-bg)' : d <= 60 ? 'rgba(255,245,157,0.15)' : 'var(--green-bg)';
+                return `<tr>
+                  ${cols.map(c => `<td>${escapeHTML(row[c])}</td>`).join('')}
+                  <td style="color:${color};font-weight:600;background:${bg};text-align:center">${d}</td>
+                  <td style="text-align:center">
+                    <button class="btn-icon" title="Ver detalle" onclick="verDetalleRenovacion('${escapeHTML(String(row['No. Póliza']||'').replace(/'/g,"\\'"))}')">📋</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function verDetalleRenovacion(noPoliza) {
+      const todas = window._renovacionesData?.todas || [];
+      const p = todas.find(r => String(r['No. Póliza']) === noPoliza);
+      if (!p) return;
+
+      const alerta = p._dias <= 50
+        ? '<div style="background:var(--amber-bg);color:var(--amber);padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:13px">⚠️ Esta póliza está próxima a vencer. Contactar al cliente para renovación.</div>'
+        : '';
+
+      document.getElementById('detalle-renovacion-wrapper').innerHTML = `
+        <div class="form-panel" style="margin-top:16px">
+          <div class="section-title" style="border:none;margin-bottom:12px">📋 Detalle: ${escapeHTML(p['No. Póliza'])}</div>
+          ${alerta}
+          <div class="form-grid" style="gap:8px 24px">
+            <div><span style="color:var(--white-40);font-size:12px">Cliente</span><br>${escapeHTML(p['Nombre/Razón Social'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">No. Póliza</span><br>${escapeHTML(p['No. Póliza'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Producto</span><br>${escapeHTML(p['Producto'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Aseguradora</span><br>${escapeHTML(p['Aseguradora'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Inicio Vigencia</span><br>${escapeHTML(p['Inicio Vigencia'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Fin Vigencia</span><br>${escapeHTML(p['Fin Vigencia'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Días Restantes</span><br><strong style="font-size:24px;color:${p._dias<45?'var(--amber)':'var(--gold)'}">${p._dias}</strong></div>
+            <div><span style="color:var(--white-40);font-size:12px">Periodicidad</span><br>${escapeHTML(p['Periodicidad'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Prima Total</span><br>${escapeHTML(p['Prima Total Emitida'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Moneda</span><br>${escapeHTML(p['Moneda'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Teléfono</span><br>${escapeHTML(p['Teléfono'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Correo</span><br>${escapeHTML(p['Correo'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Contacto</span><br>${escapeHTML(p['Contacto'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Clave Emisión</span><br>${escapeHTML(p['Clave de Emisión'])}</div>
+          </div>
+          <div style="margin-top:16px">
+            <button class="btn btn-secondary" onclick="document.getElementById('detalle-renovacion-wrapper').innerHTML=''">Cerrar</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('detalle-renovacion-wrapper').scrollIntoView({ behavior: 'smooth' });
     }
   </script>
 </body>
