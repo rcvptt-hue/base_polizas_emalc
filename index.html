@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestor de Cartera — Rizkora</title>
   <meta name="robots" content="noindex, nofollow">
-  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2/lib/msal-browser.min.js"></script>
   <style>
     /* ═══════════════════════════════════════════
        RIZKORA DESIGN SYSTEM — Navy / Gold
@@ -178,8 +178,13 @@
     .error-msg {
       color: var(--red);
       font-size: 13px;
-      margin-top: 8px;
+      margin-top: 12px;
       display: none;
+      line-height: 1.5;
+      word-break: break-word;
+      background: var(--red-bg);
+      padding: 10px 12px;
+      border-radius: 6px;
     }
     .error-msg.visible { display: block; }
 
@@ -527,21 +532,40 @@
     };
 
     async function initMSAL() {
+      // Verificar que la librería cargó
+      if (typeof msal === 'undefined') {
+        throw new Error('LIBRERÍA NO CARGADA: msal-browser no se descargó del CDN. Recarga con Ctrl+F5.');
+      }
+
+      // Verificar que los IDs no sean placeholder
+      if (CONFIG.clientId.includes('PEGAR') || CONFIG.clientId.includes('AQUI') || CONFIG.clientId.length < 10) {
+        throw new Error('CLIENT ID NO CONFIGURADO: Abre index.html y reemplaza el valor de clientId en CONFIG con tu Application (client) ID de Azure.');
+      }
+      if (CONFIG.tenantId.includes('PEGAR') || CONFIG.tenantId.includes('AQUI') || CONFIG.tenantId.length < 10) {
+        throw new Error('TENANT ID NO CONFIGURADO: Abre index.html y reemplaza el valor de tenantId en CONFIG con tu Directory (tenant) ID de Azure.');
+      }
+
       try {
         msalInstance = new msal.PublicClientApplication(msalConfig);
-        await msalInstance.initialize();
-
-        // Verificar si hay sesión existente
-        const accounts = msalInstance.getAllAccounts();
-        if (accounts.length > 0) {
-          currentAccount = accounts[0];
-          return true;
-        }
-        return false;
       } catch (e) {
-        console.error('Error inicializando MSAL:', e);
-        return false;
+        msalInstance = null;
+        throw new Error('Error creando PublicClientApplication: ' + e.message);
       }
+
+      try {
+        await msalInstance.initialize();
+      } catch (e) {
+        msalInstance = null;
+        throw new Error('Error en initialize(): ' + e.message + '. Verifica que el Client ID sea correcto en Azure.');
+      }
+
+      // Verificar si hay sesión existente
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        currentAccount = accounts[0];
+        return true;
+      }
+      return false;
     }
 
     // ═══════════════════════════════════════════
@@ -555,10 +579,11 @@
         error.classList.remove('visible');
         showScreen('screen-login');
         initMSAL().then(hasSession => {
-          if (hasSession) {
-            // Ya hay sesión, ir directo a la app
-            entrarApp();
-          }
+          if (hasSession) entrarApp();
+        }).catch(e => {
+          const errorEl = document.getElementById('error-login');
+          errorEl.textContent = e.message;
+          errorEl.classList.add('visible');
         });
       } else {
         error.classList.add('visible');
