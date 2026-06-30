@@ -494,6 +494,36 @@
     }
     .btn-icon:hover { background: var(--white-15); }
 
+    .date-input-wrap {
+      position: relative;
+      display: flex;
+      gap: 0;
+    }
+    .date-input-wrap input[type="text"] {
+      flex: 1;
+      border-radius: 8px 0 0 8px;
+    }
+    .date-input-wrap .btn-cal {
+      background: var(--white-15);
+      border: 1px solid var(--white-15);
+      border-left: none;
+      border-radius: 0 8px 8px 0;
+      color: var(--white-70);
+      font-size: 18px;
+      padding: 0 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .date-input-wrap .btn-cal:hover { background: var(--white-08); }
+    .date-input-wrap input[type="date"] {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+      right: 0;
+      bottom: 0;
+    }
+
     .toast {
       position: fixed;
       top: 20px;
@@ -1123,6 +1153,93 @@
         </div>`;
     }
 
+    /**
+     * Normaliza una fecha a dd/mm/yyyy
+     * Acepta: d/m/yyyy, dd/mm/yyyy, d-m-yyyy, dd-mm-yyyy, d.m.yyyy, dd.mm.yyyy
+     * Retorna: { ok: true, value: 'dd/mm/yyyy' } o { ok: false, error: 'msg' }
+     */
+    function normalizeFecha(str) {
+      if (!str || !str.trim()) return { ok: true, value: '' }; // vacío es válido (campo no obligatorio)
+
+      const s = str.trim();
+      // Separar por /, - o .
+      const parts = s.split(/[\/\-\.]/);
+      if (parts.length !== 3) return { ok: false, error: 'Usa formato día/mes/año (ej: 15/3/2025)' };
+
+      let [d, m, y] = parts.map(p => p.trim());
+      const dia = parseInt(d, 10);
+      const mes = parseInt(m, 10);
+      const anio = parseInt(y, 10);
+
+      if (isNaN(dia) || isNaN(mes) || isNaN(anio)) return { ok: false, error: 'Fecha no válida' };
+      if (dia < 1 || dia > 31) return { ok: false, error: 'Día fuera de rango (1-31)' };
+      if (mes < 1 || mes > 12) return { ok: false, error: 'Mes fuera de rango (1-12)' };
+      if (anio < 1900 || anio > 2100) return { ok: false, error: 'Año fuera de rango (1900-2100)' };
+
+      // Validar que la fecha existe
+      const testDate = new Date(anio, mes - 1, dia);
+      if (testDate.getDate() !== dia || testDate.getMonth() !== mes - 1) {
+        return { ok: false, error: `La fecha ${dia}/${mes}/${anio} no existe` };
+      }
+
+      const result = `${String(dia).padStart(2,'0')}/${String(mes).padStart(2,'0')}/${anio}`;
+      return { ok: true, value: result };
+    }
+
+    /**
+     * Genera un input de fecha con botón de calendario
+     * El texto se normaliza al perder el foco (onblur)
+     * El calendario nativo llena el campo en dd/mm/yyyy
+     */
+    function dateInputHTML(id, label, value = '', placeholder = 'd/m/aaaa') {
+      const norm = normalizeFecha(value);
+      const displayVal = norm.ok ? norm.value : escapeHTML(value || '');
+      return `
+        <div class="input-group">
+          <label>${label}</label>
+          <div class="date-input-wrap">
+            <input type="text" id="${id}" value="${displayVal}" placeholder="${placeholder}"
+                   onblur="onDateBlur(this)">
+            <button type="button" class="btn-cal" onclick="openCalendar('${id}')" title="Abrir calendario">📅</button>
+            <input type="date" id="${id}-picker" onchange="onCalendarPick('${id}', this.value)" tabindex="-1">
+          </div>
+        </div>`;
+    }
+
+    /** Al perder el foco, normaliza el texto a dd/mm/yyyy */
+    function onDateBlur(el) {
+      if (!el.value.trim()) return;
+      const r = normalizeFecha(el.value);
+      if (r.ok && r.value) {
+        el.value = r.value;
+        el.style.borderColor = '';
+      } else {
+        el.style.borderColor = 'var(--red)';
+      }
+    }
+
+    /** Abre el calendario nativo */
+    function openCalendar(id) {
+      const picker = document.getElementById(id + '-picker');
+      if (!picker) return;
+      // Si hay fecha en el texto, pre-llenar el picker
+      const textVal = document.getElementById(id)?.value || '';
+      const norm = normalizeFecha(textVal);
+      if (norm.ok && norm.value) {
+        const [d, m, y] = norm.value.split('/');
+        picker.value = `${y}-${m}-${d}`;
+      }
+      picker.showPicker?.() || picker.click();
+    }
+
+    /** Cuando se selecciona del calendario, llenar el texto */
+    function onCalendarPick(id, isoVal) {
+      if (!isoVal) return;
+      const [y, m, d] = isoVal.split('-');
+      document.getElementById(id).value = `${d}/${m}/${y}`;
+      document.getElementById(id).style.borderColor = '';
+    }
+
     async function ensureData(tableName) {
       if (DATA[tableName].columns.length === 0) {
         try {
@@ -1246,14 +1363,14 @@
           <div class="form-grid">
             ${selectHTML('f-tipo', OPCIONES.persona, d['Tipo Persona'], 'Tipo Persona')}
             ${inputHTML('f-nombre', 'Nombre/Razón Social *', d['Nombre/Razón Social'], 'Ingrese nombre o razón social')}
-            ${inputHTML('f-fecha-nac', 'Fecha Nacimiento', d['Fecha Nacimiento'], 'dd/mm/yyyy')}
+            ${dateInputHTML('f-fecha-nac', 'Fecha Nacimiento', d['Fecha Nacimiento'])}
             ${inputHTML('f-rfc', 'RFC', d['RFC'], 'Ingrese RFC')}
             ${inputHTML('f-tel', 'Teléfono', d['Teléfono'], 'Ingrese teléfono')}
             ${inputHTML('f-correo', 'Correo', d['Correo'], 'correo@ejemplo.com')}
             ${selectHTML('f-producto', OPCIONES.producto, d['Producto'], 'Producto')}
-            ${inputHTML('f-fecha-reg', 'Fecha Registro *', d['Fecha Registro'] || (isEdit ? '' : fechaHoy()), 'dd/mm/yyyy')}
-            ${inputHTML('f-fecha-contacto', 'Fecha Contacto', d['Fecha Contacto'], 'dd/mm/yyyy')}
-            ${inputHTML('f-seguimiento', 'Seguimiento', d['Seguimiento'], 'dd/mm/yyyy')}
+            ${dateInputHTML('f-fecha-reg', 'Fecha Registro *', d['Fecha Registro'] || (isEdit ? '' : fechaHoy()))}
+            ${dateInputHTML('f-fecha-contacto', 'Fecha Contacto', d['Fecha Contacto'])}
+            ${dateInputHTML('f-seguimiento', 'Seguimiento', d['Seguimiento'])}
             ${inputHTML('f-referenciador', 'Referenciador', d['Referenciador'], 'Origen del cliente/promoción')}
             ${inputHTML('f-estatus', 'Estatus', d['Estatus'], 'Estado actual del prospecto')}
             ${inputHTML('f-direccion', 'Dirección', d['Dirección'], 'Calle 123, Mérida, 97000')}
@@ -1293,14 +1410,23 @@
       if (!nombre) { showToast('El nombre/razón social es obligatorio', 'err'); return; }
       if (!fechaReg) { showToast('La fecha de registro es obligatoria', 'err'); return; }
 
-      // Validar formato de fechas
-      const fechaFields = ['f-fecha-nac','f-fecha-reg','f-fecha-contacto','f-seguimiento'];
-      for (const fId of fechaFields) {
-        const v = (document.getElementById(fId)?.value || '').trim();
-        if (v && !/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
-          showToast(`Formato de fecha inválido en "${document.querySelector(`label[for="${fId}"]`)?.textContent || fId}". Usa dd/mm/yyyy`, 'err');
+      // Normalizar fechas (acepta d/m/yyyy, dd-mm-yyyy, etc. → dd/mm/yyyy)
+      const fechaFields = [
+        { id: 'f-fecha-nac', label: 'Fecha Nacimiento' },
+        { id: 'f-fecha-reg', label: 'Fecha Registro' },
+        { id: 'f-fecha-contacto', label: 'Fecha Contacto' },
+        { id: 'f-seguimiento', label: 'Seguimiento' }
+      ];
+      for (const f of fechaFields) {
+        const el = document.getElementById(f.id);
+        if (!el) continue;
+        const r = normalizeFecha(el.value);
+        if (!r.ok) {
+          showToast(`${f.label}: ${r.error}`, 'err');
+          el.focus();
           return;
         }
+        el.value = r.value; // actualizar con formato normalizado
       }
 
       // Construir array en orden de columnas Excel
