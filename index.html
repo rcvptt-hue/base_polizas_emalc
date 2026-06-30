@@ -992,6 +992,12 @@
         case 'registro':
           renderRegistro(content);
           break;
+        case 'consulta':
+          renderConsulta(content);
+          break;
+        case 'poliza':
+          renderPolizaNueva(content);
+          break;
         default:
           content.innerHTML = `
             <div class="empty-state">
@@ -1886,6 +1892,393 @@
 
       } catch (e) {
         showToast('Error al registrar: ' + e.message, 'err');
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // CONSULTA DE CLIENTES
+    // ═══════════════════════════════════════════
+
+    async function renderConsulta(container) {
+      await ensureData('Polizas');
+      const polizas = DATA.Polizas.rows;
+
+      if (!polizas.length) {
+        container.innerHTML = `
+          <div class="section-title">🔍 Consulta de Clientes</div>
+          <div class="empty-state"><p style="font-size:48px;margin-bottom:16px">📋</p>
+          <p style="color:var(--white-70)">No hay clientes registrados.</p></div>`;
+        return;
+      }
+
+      const clientesUnicos = [...new Set(polizas.map(r => r['Nombre/Razón Social']).filter(Boolean))];
+
+      container.innerHTML = `
+        <div class="section-title">🔍 Consulta de Clientes</div>
+        <div class="toolbar">
+          <input type="text" class="search-input" id="search-consulta"
+                 placeholder="🔍 Buscar cliente..." oninput="filtrarClientesConsulta()">
+        </div>
+        <div class="form-panel" style="margin-bottom:16px">
+          ${selectHTML('c-cliente', clientesUnicos, '', 'Seleccionar Cliente', 'Seleccionar...')}
+        </div>
+        <div id="consulta-detail-wrapper"></div>
+      `;
+
+      document.getElementById('c-cliente').addEventListener('change', function() {
+        if (this.value) mostrarDetalleCliente(this.value);
+        else document.getElementById('consulta-detail-wrapper').innerHTML = '';
+      });
+
+      // Search filter for the select
+      document.getElementById('search-consulta')?.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        const sel = document.getElementById('c-cliente');
+        Array.from(sel.options).forEach(opt => {
+          if (!opt.value) return;
+          opt.style.display = opt.value.toLowerCase().includes(q) ? '' : 'none';
+        });
+      });
+    }
+
+    function filtrarClientesConsulta() {
+      const q = (document.getElementById('search-consulta')?.value || '').toLowerCase();
+      const sel = document.getElementById('c-cliente');
+      if (!sel) return;
+      Array.from(sel.options).forEach(opt => {
+        if (!opt.value) return;
+        opt.style.display = opt.value.toLowerCase().includes(q) ? '' : 'none';
+      });
+    }
+
+    function mostrarDetalleCliente(nombre) {
+      const polizasCliente = DATA.Polizas.rows.filter(r => r['Nombre/Razón Social'] === nombre);
+      if (!polizasCliente.length) return;
+
+      const info = polizasCliente[0];
+      const vigentes = polizasCliente.filter(r => (r['Estado']||'').toUpperCase() === 'VIGENTE').length;
+      const canceladas = polizasCliente.filter(r => (r['Estado']||'').toUpperCase() === 'CANCELADO').length;
+      const terminadas = polizasCliente.filter(r => (r['Estado']||'').toUpperCase() === 'TERMINADO').length;
+
+      const colsMostrar = ['No. Póliza','Producto','Aseguradora','Inicio Vigencia','Fin Vigencia','Estado','Periodicidad','Moneda'];
+
+      document.getElementById('consulta-detail-wrapper').innerHTML = `
+        <!-- Info del cliente -->
+        <div class="form-panel">
+          <div class="section-title" style="border:none;margin-bottom:12px">📇 ${escapeHTML(nombre)}</div>
+          <div class="form-grid" style="gap:8px 24px">
+            <div><span style="color:var(--white-40);font-size:12px">Tipo Persona</span><br>${escapeHTML(info['Tipo Persona'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">RFC</span><br>${escapeHTML(info['RFC'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Teléfono</span><br>${escapeHTML(info['Teléfono'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Correo</span><br>${escapeHTML(info['Correo'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Fecha Nacimiento</span><br>${escapeHTML(info['Fecha Nacimiento'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Dirección</span><br>${escapeHTML(info['Dirección'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Referenciador</span><br>${escapeHTML(info['Referenciador'])}</div>
+            <div><span style="color:var(--white-40);font-size:12px">Contacto</span><br>${escapeHTML(info['Contacto'])}</div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="dashboard-grid" style="margin:16px 0">
+          <div class="stat-card">
+            <div class="label">Total Pólizas</div>
+            <div class="value">${polizasCliente.length}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Vigentes</div>
+            <div class="value" style="color:var(--green)">${vigentes}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Canceladas</div>
+            <div class="value" style="color:var(--red)">${canceladas}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Terminadas</div>
+            <div class="value" style="color:var(--white-40)">${terminadas}</div>
+          </div>
+        </div>
+
+        <!-- Tabla de pólizas -->
+        <div class="section-title">Pólizas</div>
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              ${colsMostrar.map(c => `<th>${escapeHTML(c)}</th>`).join('')}
+              <th style="text-align:center">Acc.</th>
+            </tr></thead>
+            <tbody>
+              ${polizasCliente.map(row => {
+                const realIndex = DATA.Polizas.rows.indexOf(row);
+                const badge = (row['Estado']||'').toUpperCase() === 'VIGENTE' ? 'color:var(--green);font-weight:600'
+                            : (row['Estado']||'').toUpperCase() === 'CANCELADO' ? 'color:var(--red);font-weight:600'
+                            : '';
+                return `<tr>
+                  ${colsMostrar.map(c => c === 'Estado'
+                    ? `<td style="${badge}">${escapeHTML(row[c])}</td>`
+                    : `<td>${escapeHTML(row[c])}</td>`
+                  ).join('')}
+                  <td style="text-align:center;white-space:nowrap">
+                    <button class="btn-icon" title="Ver/Editar" onclick="editarPolizaConsulta(${realIndex})">📝</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div id="edit-poliza-wrapper"></div>
+      `;
+    }
+
+    function editarPolizaConsulta(index) {
+      const p = DATA.Polizas.rows[index];
+      if (!p) return;
+      editingIndex = index;
+
+      document.getElementById('edit-poliza-wrapper').innerHTML = `
+        <div class="form-panel" style="margin-top:16px">
+          <div class="section-title" style="border:none;margin-bottom:16px">
+            ✏️ Editando póliza: ${escapeHTML(p['No. Póliza'])}
+          </div>
+          <div class="form-grid">
+            ${inputHTML('ep-no-poliza', 'No. Póliza (no editable)', p['No. Póliza'])}
+            ${selectHTML('ep-tipo', OPCIONES.persona, p['Tipo Persona'], 'Tipo Persona')}
+            ${selectHTML('ep-producto', OPCIONES.producto, p['Producto'], 'Producto')}
+            ${dateInputHTML('ep-inicio', 'Inicio Vigencia', p['Inicio Vigencia'])}
+            ${dateInputHTML('ep-fin', 'Fin Vigencia', p['Fin Vigencia'])}
+            ${inputHTML('ep-rfc', 'RFC', p['RFC'])}
+            ${selectHTML('ep-pago', OPCIONES.pago, p['Forma de Pago'], 'Forma de Pago')}
+            ${selectHTML('ep-banco', OPCIONES.banco, p['Banco'], 'Banco')}
+            ${selectHTML('ep-periodicidad', OPCIONES.periodicidad, p['Periodicidad'], 'Periodicidad')}
+            ${selectHTML('ep-moneda', OPCIONES.moneda, p['Moneda'], 'Moneda')}
+            ${inputHTML('ep-prima-total', 'Prima Total Emitida', p['Prima Total Emitida'])}
+            ${inputHTML('ep-prima-neta', 'Prima Neta', p['Prima Neta'])}
+            ${inputHTML('ep-primer-pago', 'Primer Pago', p['Primer Pago'])}
+            ${inputHTML('ep-pagos-sub', 'Pagos Subsecuentes', p['Pagos Subsecuentes'])}
+            ${selectHTML('ep-aseguradora', OPCIONES.aseguradora, p['Aseguradora'], 'Aseguradora')}
+            ${inputHTML('ep-comision', '% Comisión', p['% Comisión'])}
+            ${selectHTML('ep-estado', OPCIONES.estadoPoliza, p['Estado'], 'Estado')}
+            ${inputHTML('ep-contacto', 'Contacto', p['Contacto'])}
+            ${inputHTML('ep-direccion', 'Dirección', p['Dirección'])}
+            ${inputHTML('ep-tel', 'Teléfono', p['Teléfono'])}
+            ${inputHTML('ep-correo', 'Correo', p['Correo'])}
+            ${dateInputHTML('ep-fecha-nac', 'Fecha Nacimiento', p['Fecha Nacimiento'])}
+            ${inputHTML('ep-referenciador', 'Referenciador', p['Referenciador'])}
+            ${selectHTML('ep-clave', OPCIONES.claveEmision, p['Clave de Emisión'], 'Clave de Emisión')}
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="guardarEdicionPoliza()">💾 Guardar Cambios</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('edit-poliza-wrapper').innerHTML='';editingIndex=null">❌ Cancelar</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('edit-poliza-wrapper').scrollIntoView({ behavior: 'smooth' });
+      // Make No. Póliza read-only
+      document.getElementById('ep-no-poliza').readOnly = true;
+      document.getElementById('ep-no-poliza').style.opacity = '0.6';
+    }
+
+    async function guardarEdicionPoliza() {
+      if (editingIndex === null) return;
+
+      // Normalizar fechas
+      for (const f of [{id:'ep-inicio',l:'Inicio Vigencia'},{id:'ep-fin',l:'Fin Vigencia'},{id:'ep-fecha-nac',l:'Fecha Nacimiento'}]) {
+        const el = document.getElementById(f.id);
+        if (el?.value?.trim()) {
+          const r = normalizeFecha(el.value);
+          if (!r.ok) { showToast(`${f.l}: ${r.error}`, 'err'); return; }
+          el.value = r.value;
+        }
+      }
+
+      const values = [
+        document.getElementById('ep-tipo')?.value || '',
+        DATA.Polizas.rows[editingIndex]['Nombre/Razón Social'],
+        document.getElementById('ep-no-poliza')?.value || '',
+        document.getElementById('ep-producto')?.value || '',
+        document.getElementById('ep-inicio')?.value || '',
+        document.getElementById('ep-fin')?.value || '',
+        document.getElementById('ep-rfc')?.value || '',
+        document.getElementById('ep-pago')?.value || '',
+        document.getElementById('ep-banco')?.value || '',
+        document.getElementById('ep-periodicidad')?.value || '',
+        document.getElementById('ep-prima-total')?.value || '',
+        document.getElementById('ep-prima-neta')?.value || '',
+        document.getElementById('ep-primer-pago')?.value || '',
+        document.getElementById('ep-pagos-sub')?.value || '',
+        document.getElementById('ep-aseguradora')?.value || '',
+        document.getElementById('ep-comision')?.value || '',
+        document.getElementById('ep-estado')?.value || '',
+        document.getElementById('ep-contacto')?.value || '',
+        document.getElementById('ep-direccion')?.value || '',
+        document.getElementById('ep-tel')?.value || '',
+        document.getElementById('ep-correo')?.value || '',
+        document.getElementById('ep-fecha-nac')?.value || '',
+        document.getElementById('ep-moneda')?.value || '',
+        document.getElementById('ep-referenciador')?.value || '',
+        document.getElementById('ep-clave')?.value || ''
+      ];
+
+      try {
+        await updateRow('Polizas', editingIndex, values);
+        showToast('✅ Póliza actualizada');
+        DATA.Polizas = await readTable('Polizas');
+        editingIndex = null;
+        const clienteNombre = document.getElementById('c-cliente')?.value;
+        if (clienteNombre) mostrarDetalleCliente(clienteNombre);
+      } catch (e) {
+        showToast('Error: ' + e.message, 'err');
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // PÓLIZA NUEVA (PARA CLIENTE EXISTENTE)
+    // ═══════════════════════════════════════════
+
+    async function renderPolizaNueva(container) {
+      await ensureData('Polizas');
+      const polizas = DATA.Polizas.rows;
+
+      if (!polizas.length) {
+        container.innerHTML = `
+          <div class="section-title">🆕 Póliza Nueva para Cliente Existente</div>
+          <div class="empty-state"><p style="font-size:48px;margin-bottom:16px">📋</p>
+          <p style="color:var(--white-70)">No hay clientes registrados. Primero convierte un prospecto en la pestaña
+          <strong style="color:var(--gold)">👤 Registro</strong>.</p></div>`;
+        return;
+      }
+
+      const clientesUnicos = [...new Set(polizas.map(r => r['Nombre/Razón Social']).filter(Boolean))];
+
+      container.innerHTML = `
+        <div class="section-title">🆕 Póliza Nueva para Cliente Existente</div>
+        <p style="color:var(--white-70);margin-bottom:16px;font-size:14px">
+          Agrega una póliza adicional a un cliente que ya está en la base de datos.
+        </p>
+        <div class="form-panel" style="margin-bottom:16px">
+          ${selectHTML('pn-cliente', clientesUnicos, '', 'Seleccionar Cliente *', 'Seleccionar...')}
+        </div>
+        <div id="pn-detail-wrapper"></div>
+      `;
+
+      document.getElementById('pn-cliente').addEventListener('change', function() {
+        if (this.value) mostrarFormPolizaNueva(this.value);
+        else document.getElementById('pn-detail-wrapper').innerHTML = '';
+      });
+    }
+
+    function mostrarFormPolizaNueva(nombre) {
+      const polizasCliente = DATA.Polizas.rows.filter(r => r['Nombre/Razón Social'] === nombre);
+      const clienteData = polizasCliente[0] || {};
+      const colsMini = ['No. Póliza','Producto','Aseguradora','Fin Vigencia','Estado'];
+
+      document.getElementById('pn-detail-wrapper').innerHTML = `
+        <!-- Pólizas existentes -->
+        <div style="margin-bottom:16px">
+          <div class="section-title">Pólizas existentes de ${escapeHTML(nombre)}</div>
+          <div class="data-table-wrapper">
+            <table class="data-table">
+              <thead><tr>${colsMini.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${polizasCliente.map(row => `<tr>
+                  ${colsMini.map(c => `<td>${escapeHTML(row[c])}</td>`).join('')}
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Formulario nueva póliza -->
+        <div class="form-panel">
+          <div class="section-title" style="border:none;margin-bottom:16px">📄 Nueva Póliza</div>
+          <div class="form-grid">
+            ${inputHTML('pn-no-poliza', 'No. Póliza *', '', 'Ingrese número de póliza')}
+            ${selectHTML('pn-producto', OPCIONES.producto, '', 'Producto *')}
+            ${dateInputHTML('pn-inicio', 'Inicio Vigencia *')}
+            ${dateInputHTML('pn-fin', 'Fin Vigencia *')}
+            ${selectHTML('pn-pago', OPCIONES.pago, '', 'Forma de Pago')}
+            ${selectHTML('pn-banco', OPCIONES.banco, '', 'Banco')}
+            ${selectHTML('pn-periodicidad', OPCIONES.periodicidad, '', 'Periodicidad')}
+            ${selectHTML('pn-moneda', OPCIONES.moneda, '', 'Moneda')}
+            ${inputHTML('pn-prima-total', 'Prima Total Emitida', '', 'Monto')}
+            ${inputHTML('pn-prima-neta', 'Prima Neta', '', 'Monto')}
+            ${inputHTML('pn-primer-pago', 'Primer Pago', '', 'Monto')}
+            ${inputHTML('pn-pagos-sub', 'Pagos Subsecuentes', '', 'Monto')}
+            ${selectHTML('pn-aseguradora', OPCIONES.aseguradora, '', 'Aseguradora')}
+            ${inputHTML('pn-comision', '% Comisión', '', 'Ej: 10.5')}
+            ${selectHTML('pn-estado', OPCIONES.estadoPoliza, 'VIGENTE', 'Estado')}
+            ${inputHTML('pn-contacto', 'Contacto', clienteData['Contacto'] || '')}
+            ${inputHTML('pn-direccion', 'Dirección', clienteData['Dirección'] || '', 'Ciudad, CP')}
+            ${inputHTML('pn-referenciador', 'Referenciador', clienteData['Referenciador'] || '')}
+            ${selectHTML('pn-clave', OPCIONES.claveEmision, '', 'Clave de Emisión')}
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="guardarPolizaNueva()">💾 Guardar Nueva Póliza</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('pn-detail-wrapper').innerHTML='';document.getElementById('pn-cliente').value=''">❌ Cancelar</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function guardarPolizaNueva() {
+      const nombre = document.getElementById('pn-cliente')?.value || '';
+      const noPoliza = (document.getElementById('pn-no-poliza')?.value || '').trim();
+
+      if (!nombre) { showToast('Selecciona un cliente', 'err'); return; }
+      if (!noPoliza) { showToast('El número de póliza es obligatorio', 'err'); return; }
+
+      // Validar unicidad
+      if (DATA.Polizas.rows.some(r => String(r['No. Póliza']||'').trim() === noPoliza)) {
+        showToast('⚠️ Este número de póliza ya existe', 'err'); return;
+      }
+
+      // Validar fechas
+      for (const f of [{id:'pn-inicio',l:'Inicio Vigencia'},{id:'pn-fin',l:'Fin Vigencia'}]) {
+        const v = document.getElementById(f.id)?.value || '';
+        if (!v.trim()) { showToast(`${f.l} es obligatorio`, 'err'); return; }
+        const r = normalizeFecha(v);
+        if (!r.ok) { showToast(`${f.l}: ${r.error}`, 'err'); return; }
+        document.getElementById(f.id).value = r.value;
+      }
+
+      // Obtener datos base del cliente
+      const clienteData = DATA.Polizas.rows.find(r => r['Nombre/Razón Social'] === nombre) || {};
+
+      const values = [
+        clienteData['Tipo Persona'] || '',
+        nombre,
+        noPoliza,
+        document.getElementById('pn-producto')?.value || '',
+        document.getElementById('pn-inicio')?.value || '',
+        document.getElementById('pn-fin')?.value || '',
+        clienteData['RFC'] || '',
+        document.getElementById('pn-pago')?.value || '',
+        document.getElementById('pn-banco')?.value || '',
+        document.getElementById('pn-periodicidad')?.value || '',
+        document.getElementById('pn-prima-total')?.value || '',
+        document.getElementById('pn-prima-neta')?.value || '',
+        document.getElementById('pn-primer-pago')?.value || '',
+        document.getElementById('pn-pagos-sub')?.value || '',
+        document.getElementById('pn-aseguradora')?.value || '',
+        document.getElementById('pn-comision')?.value || '',
+        document.getElementById('pn-estado')?.value || '',
+        document.getElementById('pn-contacto')?.value || '',
+        document.getElementById('pn-direccion')?.value || '',
+        clienteData['Teléfono'] || '',
+        clienteData['Correo'] || '',
+        clienteData['Fecha Nacimiento'] || '',
+        document.getElementById('pn-moneda')?.value || '',
+        document.getElementById('pn-referenciador')?.value || '',
+        document.getElementById('pn-clave')?.value || ''
+      ];
+
+      try {
+        await addRow('Polizas', values);
+        showToast('✅ Nueva póliza agregada correctamente');
+        DATA.Polizas = await readTable('Polizas');
+        renderPolizaNueva(document.getElementById('app-content'));
+      } catch (e) {
+        showToast('Error: ' + e.message, 'err');
       }
     }
   </script>
