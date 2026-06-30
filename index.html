@@ -392,6 +392,126 @@
     .log-area .log-warn { color: var(--amber); }
 
     /* ═══════════════════════════════════════════
+       FORM LAYOUT
+       ═══════════════════════════════════════════ */
+    .form-panel {
+      background: var(--navy-800);
+      border: 1px solid var(--white-15);
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px 24px;
+    }
+
+    .form-grid .span-2 { grid-column: 1 / -1; }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--white-15);
+    }
+    .form-actions .btn { width: auto; min-width: 180px; }
+
+    .input-group select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--white-08);
+      border: 1px solid var(--white-15);
+      border-radius: 8px;
+      color: var(--white);
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='1.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+    .input-group select:focus { border-color: var(--gold); }
+    .input-group select option { background: var(--navy-800); color: var(--white); }
+
+    .input-group textarea {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--white-08);
+      border: 1px solid var(--white-15);
+      border-radius: 8px;
+      color: var(--white);
+      font-size: 15px;
+      outline: none;
+      resize: vertical;
+      min-height: 70px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    .input-group textarea:focus { border-color: var(--gold); }
+    .input-group textarea::placeholder { color: var(--white-40); }
+
+    /* ═══════════════════════════════════════════
+       TOOLBAR (search + add button)
+       ═══════════════════════════════════════════ */
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar .search-input {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px 14px;
+      background: var(--white-08);
+      border: 1px solid var(--white-15);
+      border-radius: 8px;
+      color: var(--white);
+      font-size: 14px;
+      outline: none;
+    }
+    .toolbar .search-input:focus { border-color: var(--gold); }
+    .toolbar .search-input::placeholder { color: var(--white-40); }
+
+    .toolbar .btn { width: auto; white-space: nowrap; }
+
+    /* ═══════════════════════════════════════════
+       TABLE ACTION BUTTONS
+       ═══════════════════════════════════════════ */
+    .btn-icon {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+    .btn-icon:hover { background: var(--white-15); }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      z-index: 999;
+      animation: slideIn 0.3s, fadeOut 0.3s 2.7s;
+      max-width: 400px;
+    }
+    .toast-ok { background: var(--green); color: white; }
+    .toast-err { background: var(--red); color: white; }
+
+    @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
+    @keyframes fadeOut { to { opacity: 0; } }
+
+    /* ═══════════════════════════════════════════
        RESPONSIVE
        ═══════════════════════════════════════════ */
     @media (max-width: 600px) {
@@ -399,6 +519,9 @@
       .app-content { padding: 16px; }
       .nav-tab { padding: 10px 12px; font-size: 12px; }
       .dashboard-grid { grid-template-columns: 1fr 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-actions { flex-direction: column; }
+      .form-actions .btn { width: 100%; min-width: auto; }
     }
   </style>
 </head>
@@ -500,12 +623,26 @@
     };
 
     // ═══════════════════════════════════════════
+    // OPCIONES PARA SELECTORES (igual que Streamlit)
+    // ═══════════════════════════════════════════
+    const OPCIONES = {
+      persona: ['MORAL', 'FÍSICA'],
+      producto: ['AHORRO','API','APE','APC','AUTO','DAÑOS','EDUCACIONAL','FLOTILLA','GMMC','GMMI','HOGAR','OV','PENDIENTE','PPR','TEMPORAL','VG','VIAJERO','VPL'],
+      pago: ['CARGO TDC','CARGO TDD','PAGO REFERENCIADO','TRANSFERENCIA'],
+      aseguradora: ['ALLIANZ','ATLAS','AXA','BANORTE','GNP','HIR','PREVEM','QUALITAS','SKANDIA','THONA','ZURICH'],
+      banco: ['NINGUNO','AMERICAN EXPRESS','BBVA','BANAMEX','BANCOMER','BANREGIO','HSBC','SANTANDER'],
+      moneda: ['MXN','UDIS','DLLS'],
+      estatusSeguimiento: ['Seguimiento','Descartado','Convertido']
+    };
+
+    // ═══════════════════════════════════════════
     // ESTADO GLOBAL
     // ═══════════════════════════════════════════
     let msalInstance = null;
     let currentAccount = null;
     let accessToken = null;
     let activeTab = 'dashboard';
+    let editingIndex = null; // índice de fila en edición (null = modo agregar)
 
     // Cache de datos en memoria
     const DATA = {
@@ -785,6 +922,9 @@
         case 'dashboard':
           renderDashboard(content);
           break;
+        case 'prospectos':
+          renderProspectos(content);
+          break;
         default:
           content.innerHTML = `
             <div class="empty-state">
@@ -933,6 +1073,289 @@
         log('  2. El nombre no coincide exactamente (mayúsculas importan)', 'warn');
         log('  3. El archivo no está en la ruta correcta en OneDrive', 'warn');
         log('═══════════════════════════════', 'warn');
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // UTILIDADES — TOAST, FECHA, CARGA
+    // ═══════════════════════════════════════════
+
+    function showToast(msg, type = 'ok') {
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function fechaHoy() {
+      const d = new Date();
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+    }
+
+    function selectHTML(id, options, value = '', label = '', placeholder = 'Seleccionar...') {
+      const opts = options.map(o =>
+        `<option value="${escapeHTML(o)}" ${o === value ? 'selected' : ''}>${escapeHTML(o)}</option>`
+      ).join('');
+      return `
+        <div class="input-group">
+          ${label ? `<label>${label}</label>` : ''}
+          <select id="${id}">
+            <option value="">${placeholder}</option>
+            ${opts}
+          </select>
+        </div>`;
+    }
+
+    function inputHTML(id, label, value = '', placeholder = '', type = 'text') {
+      return `
+        <div class="input-group">
+          <label>${label}</label>
+          <input type="${type}" id="${id}" value="${escapeHTML(value || '')}" placeholder="${placeholder}">
+        </div>`;
+    }
+
+    function textareaHTML(id, label, value = '', placeholder = '') {
+      return `
+        <div class="input-group">
+          <label>${label}</label>
+          <textarea id="${id}" placeholder="${placeholder}">${escapeHTML(value || '')}</textarea>
+        </div>`;
+    }
+
+    async function ensureData(tableName) {
+      if (DATA[tableName].columns.length === 0) {
+        try {
+          const result = await readTable(tableName);
+          DATA[tableName] = result;
+        } catch (e) {
+          showToast(`Error cargando ${tableName}: ${e.message}`, 'err');
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // PROSPECTOS — MÓDULO COMPLETO
+    // ═══════════════════════════════════════════
+
+    // Orden de columnas en Excel (DEBE coincidir exactamente)
+    const PROSPECTOS_COLS = [
+      'Tipo Persona', 'Nombre/Razón Social', 'Fecha Nacimiento', 'RFC',
+      'Teléfono', 'Correo', 'Producto', 'Fecha Registro', 'Fecha Contacto',
+      'Seguimiento', 'Representantes Legales', 'Referenciador', 'Estatus',
+      'Notas', 'Dirección'
+    ];
+
+    async function renderProspectos(container) {
+      await ensureData('Prospectos');
+      const rows = DATA.Prospectos.rows;
+
+      // Stats
+      const total = rows.length;
+      const prodCount = new Set(rows.map(r => r['Producto']).filter(Boolean)).size;
+      const mesActual = new Date().getMonth() + 1;
+      const esteMes = rows.filter(r => {
+        const parts = String(r['Fecha Registro'] || '').split('/');
+        return parts.length >= 2 && parseInt(parts[1]) === mesActual;
+      }).length;
+
+      container.innerHTML = `
+        <div class="section-title">👥 Gestión de Prospectos</div>
+
+        <div class="dashboard-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="label">Total Prospectos</div>
+            <div class="value">${total}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Productos Diferentes</div>
+            <div class="value">${prodCount}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Este Mes</div>
+            <div class="value">${esteMes}</div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <input type="text" class="search-input" id="search-prospectos"
+                 placeholder="🔍 Buscar por nombre, RFC, producto..."
+                 oninput="filtrarProspectos()">
+          <button class="btn btn-primary" onclick="toggleFormProspectos()">
+            ➕ Nuevo Prospecto
+          </button>
+        </div>
+
+        <div id="form-prospectos-wrapper" style="display:none"></div>
+        <div id="table-prospectos-wrapper"></div>
+      `;
+
+      renderTablaProspectos(rows);
+    }
+
+    function renderTablaProspectos(rows) {
+      const wrapper = document.getElementById('table-prospectos-wrapper');
+      if (!rows.length) {
+        wrapper.innerHTML = '<div class="empty-state">No hay prospectos registrados. Haz clic en ➕ Nuevo Prospecto para agregar.</div>';
+        return;
+      }
+
+      // Columnas a mostrar en tabla (las más relevantes)
+      const colsMostrar = ['Nombre/Razón Social','Producto','Teléfono','Correo','Fecha Registro','Referenciador','Estatus'];
+
+      wrapper.innerHTML = `
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              ${colsMostrar.map(c => `<th>${escapeHTML(c)}</th>`).join('')}
+              <th style="text-align:center">Acciones</th>
+            </tr></thead>
+            <tbody>
+              ${rows.map((row, i) => `<tr>
+                ${colsMostrar.map(c => `<td>${escapeHTML(row[c])}</td>`).join('')}
+                <td style="text-align:center;white-space:nowrap">
+                  <button class="btn-icon" title="Editar" onclick="cargarEdicionProspecto(${i})">📝</button>
+                  <button class="btn-icon" title="Eliminar" onclick="eliminarProspecto(${i})">🗑️</button>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function filtrarProspectos() {
+      const q = (document.getElementById('search-prospectos')?.value || '').toLowerCase();
+      const filtered = DATA.Prospectos.rows.filter(row =>
+        PROSPECTOS_COLS.some(c => String(row[c] || '').toLowerCase().includes(q))
+      );
+      renderTablaProspectos(filtered);
+    }
+
+    function toggleFormProspectos(data = null, index = null) {
+      const wrapper = document.getElementById('form-prospectos-wrapper');
+      editingIndex = index;
+      const isEdit = index !== null;
+      const d = data || {};
+
+      wrapper.style.display = 'block';
+      wrapper.innerHTML = `
+        <div class="form-panel">
+          <div class="section-title" style="border:none;margin-bottom:16px">
+            ${isEdit ? `📝 Editando: ${escapeHTML(d['Nombre/Razón Social'])}` : '📝 Nuevo Prospecto'}
+          </div>
+          <div class="form-grid">
+            ${selectHTML('f-tipo', OPCIONES.persona, d['Tipo Persona'], 'Tipo Persona')}
+            ${inputHTML('f-nombre', 'Nombre/Razón Social *', d['Nombre/Razón Social'], 'Ingrese nombre o razón social')}
+            ${inputHTML('f-fecha-nac', 'Fecha Nacimiento', d['Fecha Nacimiento'], 'dd/mm/yyyy')}
+            ${inputHTML('f-rfc', 'RFC', d['RFC'], 'Ingrese RFC')}
+            ${inputHTML('f-tel', 'Teléfono', d['Teléfono'], 'Ingrese teléfono')}
+            ${inputHTML('f-correo', 'Correo', d['Correo'], 'correo@ejemplo.com')}
+            ${selectHTML('f-producto', OPCIONES.producto, d['Producto'], 'Producto')}
+            ${inputHTML('f-fecha-reg', 'Fecha Registro *', d['Fecha Registro'] || (isEdit ? '' : fechaHoy()), 'dd/mm/yyyy')}
+            ${inputHTML('f-fecha-contacto', 'Fecha Contacto', d['Fecha Contacto'], 'dd/mm/yyyy')}
+            ${inputHTML('f-seguimiento', 'Seguimiento', d['Seguimiento'], 'dd/mm/yyyy')}
+            ${inputHTML('f-referenciador', 'Referenciador', d['Referenciador'], 'Origen del cliente/promoción')}
+            ${inputHTML('f-estatus', 'Estatus', d['Estatus'], 'Estado actual del prospecto')}
+            ${inputHTML('f-direccion', 'Dirección', d['Dirección'], 'Calle 123, Mérida, 97000')}
+            ${textareaHTML('f-representantes', 'Representantes Legales', d['Representantes Legales'], 'Ej: Juan Pérez, María García')}
+            ${textareaHTML('f-notas', 'Notas', d['Notas'], 'Notas del prospecto...')}
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="guardarProspecto()">
+              💾 ${isEdit ? 'Actualizar Prospecto' : 'Agregar Prospecto'}
+            </button>
+            <button class="btn btn-secondary" onclick="cerrarFormProspectos()">
+              ❌ Cancelar
+            </button>
+          </div>
+        </div>
+      `;
+
+      wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function cerrarFormProspectos() {
+      document.getElementById('form-prospectos-wrapper').style.display = 'none';
+      editingIndex = null;
+    }
+
+    function cargarEdicionProspecto(index) {
+      const row = DATA.Prospectos.rows[index];
+      if (!row) return;
+      toggleFormProspectos(row, index);
+    }
+
+    async function guardarProspecto() {
+      // Leer valores del form
+      const nombre = (document.getElementById('f-nombre')?.value || '').trim();
+      const fechaReg = (document.getElementById('f-fecha-reg')?.value || '').trim();
+
+      if (!nombre) { showToast('El nombre/razón social es obligatorio', 'err'); return; }
+      if (!fechaReg) { showToast('La fecha de registro es obligatoria', 'err'); return; }
+
+      // Validar formato de fechas
+      const fechaFields = ['f-fecha-nac','f-fecha-reg','f-fecha-contacto','f-seguimiento'];
+      for (const fId of fechaFields) {
+        const v = (document.getElementById(fId)?.value || '').trim();
+        if (v && !/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+          showToast(`Formato de fecha inválido en "${document.querySelector(`label[for="${fId}"]`)?.textContent || fId}". Usa dd/mm/yyyy`, 'err');
+          return;
+        }
+      }
+
+      // Construir array en orden de columnas Excel
+      const values = [
+        document.getElementById('f-tipo')?.value || '',
+        nombre,
+        document.getElementById('f-fecha-nac')?.value || '',
+        document.getElementById('f-rfc')?.value || '',
+        document.getElementById('f-tel')?.value || '',
+        document.getElementById('f-correo')?.value || '',
+        document.getElementById('f-producto')?.value || '',
+        fechaReg,
+        document.getElementById('f-fecha-contacto')?.value || '',
+        document.getElementById('f-seguimiento')?.value || '',
+        document.getElementById('f-representantes')?.value || '',
+        document.getElementById('f-referenciador')?.value || '',
+        document.getElementById('f-estatus')?.value || '',
+        document.getElementById('f-notas')?.value || '',
+        document.getElementById('f-direccion')?.value || ''
+      ];
+
+      try {
+        if (editingIndex !== null) {
+          await updateRow('Prospectos', editingIndex, values);
+          showToast('✅ Prospecto actualizado correctamente');
+        } else {
+          await addRow('Prospectos', values);
+          showToast('✅ Prospecto agregado correctamente');
+        }
+
+        // Recargar datos y refrescar UI
+        const result = await readTable('Prospectos');
+        DATA.Prospectos = result;
+        cerrarFormProspectos();
+        renderProspectos(document.getElementById('app-content'));
+
+      } catch (e) {
+        showToast('Error al guardar: ' + e.message, 'err');
+      }
+    }
+
+    async function eliminarProspecto(index) {
+      const nombre = DATA.Prospectos.rows[index]?.['Nombre/Razón Social'] || 'este prospecto';
+      if (!confirm(`¿Estás seguro de eliminar a "${nombre}"?\n\nEsta acción no se puede deshacer.`)) return;
+
+      try {
+        await deleteRow('Prospectos', index);
+        showToast('🗑️ Prospecto eliminado');
+
+        const result = await readTable('Prospectos');
+        DATA.Prospectos = result;
+        renderProspectos(document.getElementById('app-content'));
+
+      } catch (e) {
+        showToast('Error al eliminar: ' + e.message, 'err');
       }
     }
   </script>
