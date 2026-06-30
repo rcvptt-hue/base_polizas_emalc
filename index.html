@@ -2728,11 +2728,16 @@
         return;
       }
 
-      // Calcular días transcurridos en vivo
+      // Calcular días: positivo = días restantes, negativo = días de atraso
       const hoy = new Date(); hoy.setHours(0,0,0,0);
       rows.forEach(r => {
         const fv = parseDateDMY(String(r['Fecha Vencimiento']||''));
-        r._diasTranscurridos = fv ? Math.max(0, diasEntre(hoy, fv)) : null;
+        if (fv) {
+          const diff = Math.round((fv.getTime() - hoy.getTime()) / 86400000);
+          r._diasRestantes = diff;  // positivo = faltan días, negativo = días de atraso
+        } else {
+          r._diasRestantes = null;
+        }
       });
 
       // Stats
@@ -2787,12 +2792,10 @@
 
         <!-- Leyenda -->
         <div style="margin-top:16px;font-size:12px;color:var(--white-40);display:flex;gap:16px;flex-wrap:wrap">
-          <span>🟢 &lt;5 días</span>
-          <span>🟡 5-10 días</span>
-          <span>🟠 11-20 días</span>
-          <span>🔴 &gt;20 días</span>
-          <span>⬛ Vencido</span>
-          <span>✅ Pagado</span>
+          <span style="color:var(--green)">● 5d = faltan 5 días</span>
+          <span style="color:var(--amber)">● HOY = vence hoy</span>
+          <span style="color:var(--red)">● 15d = 15 días de atraso</span>
+          <span>✅ = Pagado</span>
         </div>
       `;
 
@@ -2844,15 +2847,30 @@
               ${rows.map(row => {
                 const realIdx = DATA.Cobranza.rows.indexOf(row);
                 const est = (row['Estatus']||'').toLowerCase();
-                const dt = row._diasTranscurridos || 0;
+                const dr = row._diasRestantes;
+                const atraso = dr !== null ? Math.abs(Math.min(0, dr)) : 0;
 
                 let rowStyle = '';
                 if (est === 'pagado') rowStyle = 'background:var(--green-bg);';
                 else if (est === 'cancelado') rowStyle = 'background:var(--white-08);opacity:0.6;';
-                else if (est === 'vencido') rowStyle = 'background:rgba(139,0,0,0.3);';
-                else if (dt >= 20) rowStyle = 'background:var(--red-bg);';
-                else if (dt >= 11) rowStyle = 'background:var(--amber-bg);';
-                else if (dt >= 5) rowStyle = 'background:rgba(255,243,205,0.15);';
+                else if (dr !== null && dr < -20) rowStyle = 'background:rgba(139,0,0,0.3);';
+                else if (dr !== null && dr < -10) rowStyle = 'background:var(--red-bg);';
+                else if (dr !== null && dr < -5) rowStyle = 'background:var(--amber-bg);';
+                else if (dr !== null && dr < 0) rowStyle = 'background:rgba(255,243,205,0.15);';
+
+                // Formato de la columna Días
+                let diasDisplay, diasColor;
+                if (est === 'pagado') {
+                  diasDisplay = '✅'; diasColor = '';
+                } else if (dr === null) {
+                  diasDisplay = '—'; diasColor = '';
+                } else if (dr > 0) {
+                  diasDisplay = `${dr}d`; diasColor = 'color:var(--green)';  // faltan días
+                } else if (dr === 0) {
+                  diasDisplay = 'HOY'; diasColor = 'color:var(--amber);font-weight:700';
+                } else {
+                  diasDisplay = `${Math.abs(dr)}d`; diasColor = 'color:var(--red)'; // días de atraso
+                }
 
                 return `<tr style="${rowStyle}">
                   ${cols.map(c => {
@@ -2864,7 +2882,7 @@
                     }
                     return `<td>${escapeHTML(row[c])}</td>`;
                   }).join('')}
-                  <td style="text-align:center;font-weight:600">${est==='pagado'?'✅':dt}</td>
+                  <td style="text-align:center;font-weight:600;${diasColor}">${diasDisplay}</td>
                   <td style="text-align:center">
                     ${est !== 'pagado' && est !== 'cancelado'
                       ? `<button class="btn-icon" title="Registrar pago" onclick="mostrarFormPago(${realIdx})">💵</button>`
