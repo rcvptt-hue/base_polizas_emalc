@@ -920,25 +920,56 @@
     }
 
     /**
+     * Sanitiza un array de valores antes de enviarlo al Excel.
+     * - Fechas: asegura formato dd/mm/yyyy (convierte seriales y Date objects)
+     * - Nulls/undefined: convierte a string vacío
+     * - Números en columnas de fecha: convierte de serial a texto
+     */
+    function sanitizeValues(tableName, values) {
+      const columns = DATA[tableName]?.columns || [];
+      return values.map((val, i) => {
+        // null/undefined → ''
+        if (val == null) return '';
+
+        const colName = columns[i] || '';
+
+        // Si es columna de fecha, forzar formato texto dd/mm/yyyy
+        if (isDateColumn(colName)) {
+          // Date object → dd/mm/yyyy
+          if (val instanceof Date) return fmtDateDMY(val);
+          // Número (serial de Excel) → dd/mm/yyyy
+          if (typeof val === 'number') return excelSerialToDateStr(val);
+          // String → normalizar formato
+          if (typeof val === 'string' && val.trim()) {
+            const r = normalizeFecha(val);
+            return r.ok ? r.value : val;
+          }
+          return String(val);
+        }
+
+        return val;
+      });
+    }
+
+    /**
      * Agregar una fila a una tabla
-     * @param {string} tableName
-     * @param {Array} values — array de valores en orden de columnas
+     * Sanitiza valores automáticamente (fechas → dd/mm/yyyy texto)
      */
     async function addRow(tableName, values) {
+      const clean = sanitizeValues(tableName, values);
       return graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/rows/add`, 'POST', {
-        values: [values]
+        values: [clean]
       });
     }
 
     /**
      * Actualizar una fila por índice
-     * @param {string} tableName
-     * @param {number} index — índice base 0
-     * @param {Array} values — array de valores en orden de columnas
+     * Sanitiza valores automáticamente (fechas → dd/mm/yyyy texto)
      */
     async function updateRow(tableName, index, values) {
+      const clean = sanitizeValues(tableName, values);
       return graphAPI(`${FILE_PATH}/workbook/tables/${tableName}/rows/itemAt(index=${index})`, 'PATCH', {
-        values: [values]
+        values: [clean]
       });
     }
 
@@ -2524,6 +2555,11 @@
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
     }
 
+    /** Convierte Date a entero YYYYMMDD para comparaciones sin timezone */
+    function toYMD(d) {
+      return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    }
+
     // ═══════════════════════════════════════════
     // MOTOR DE CÁLCULO DE COBRANZA
     // ═══════════════════════════════════════════
@@ -2553,6 +2589,8 @@
       const hoy = new Date(); hoy.setHours(0,0,0,0);
       const fechaLimite = new Date(hoy);
       fechaLimite.setDate(fechaLimite.getDate() + 60);
+      const hoyYMD = toYMD(hoy);
+      const limiteYMD = toYMD(fechaLimite);
 
       const nuevos = [];
 
@@ -2577,7 +2615,7 @@
         let numRecibo = 1;
         const maxRecibos = 36;
 
-        while (numRecibo <= maxRecibos && fechaActual <= fechaLimite) {
+        while (numRecibo <= maxRecibos && toYMD(fechaActual) <= limiteYMD) {
           // ¿Ya existe este recibo?
           const existe = cobranzaExistente.some(r =>
             String(r['No. Póliza'] || '').trim() === noPoliza &&
@@ -2586,8 +2624,8 @@
 
           if (!existe) {
             const monto = numRecibo === 1 ? primerPago : pagosSub;
-            const esVencido = fechaActual < hoy;
-            const diasDiff = Math.ceil((fechaActual - hoy) / 86400000);
+            const esVencido = toYMD(fechaActual) < hoyYMD;
+            const diasDiff = Math.round((fechaActual - hoy) / 86400000);
 
             nuevos.push([
               noPoliza,                                                    // No. Póliza
