@@ -919,32 +919,39 @@
       return { columns, rows };
     }
 
+    /** Convierte Date o dd/mm/yyyy a serial de Excel (escritura sin ambigüedad) */
+    function dateToSerial(val) {
+      let d;
+      if (val instanceof Date) {
+        d = val;
+      } else if (typeof val === 'string' && val.trim()) {
+        const r = normalizeFecha(val);
+        if (!r.ok || !r.value) return val;
+        const [day, mon, yr] = r.value.split('/').map(Number);
+        d = new Date(Date.UTC(yr, mon - 1, day));
+      } else {
+        return val;
+      }
+      return Math.floor(d.getTime() / 86400000) + 25569;
+    }
+
     /**
      * Sanitiza un array de valores antes de enviarlo al Excel.
-     * - Fechas: asegura formato dd/mm/yyyy (convierte seriales y Date objects)
+     * - Fechas: convierte a serial de Excel (evita que Excel interprete mm/dd vs dd/mm)
      * - Nulls/undefined: convierte a string vacío
-     * - Números en columnas de fecha: convierte de serial a texto
      */
     function sanitizeValues(tableName, values) {
       const columns = DATA[tableName]?.columns || [];
       return values.map((val, i) => {
-        // null/undefined → ''
         if (val == null) return '';
-
         const colName = columns[i] || '';
 
-        // Si es columna de fecha, forzar formato texto dd/mm/yyyy
+        // Columnas de fecha → guardar como serial de Excel
         if (isDateColumn(colName)) {
-          // Date object → dd/mm/yyyy
-          if (val instanceof Date) return fmtDateDMY(val);
-          // Número (serial de Excel) → dd/mm/yyyy
-          if (typeof val === 'number') return excelSerialToDateStr(val);
-          // String → normalizar formato
-          if (typeof val === 'string' && val.trim()) {
-            const r = normalizeFecha(val);
-            return r.ok ? r.value : val;
-          }
-          return String(val);
+          if (typeof val === 'number') return val; // ya es serial
+          if (val === '' || (typeof val === 'string' && !val.trim())) return '';
+          const serial = dateToSerial(val);
+          return typeof serial === 'number' ? serial : val;
         }
 
         return val;
