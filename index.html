@@ -680,7 +680,10 @@
       estatusSeguimiento: ['Seguimiento','Descartado','Convertido'],
       estadoPoliza: ['VIGENTE','CANCELADO','TERMINADO'],
       periodicidad: ['CONTADO','MENSUAL','TRIMESTRAL','SEMESTRAL'],
-      claveEmision: ['Emilia Alcocer','José Carlos Ibarra','Suemy Alcocer']
+      claveEmision: ['Emilia Alcocer','José Carlos Ibarra','Suemy Alcocer'],
+      conceptoOp: ['Contabilidad','Gasolina','Impuestos','Papelería','Patrocinio','Pautas Publicitarias','Promocionales','Promoción de Regalo','Redes y Mercadotecnia','Tarjetas'],
+      formaPagoOp: ['Efectivo','TDC','TDD','Transferencia'],
+      deducible: ['Sí','No']
     };
 
     // ═══════════════════════════════════════════
@@ -1018,6 +1021,9 @@
           break;
         case 'cobranza':
           renderCobranza(content);
+          break;
+        case 'operacion':
+          renderOperacion(content);
           break;
         default:
           content.innerHTML = `
@@ -2728,6 +2734,208 @@
         DATA.Cobranza = await readTable('Cobranza');
         document.getElementById('pago-form-wrapper').innerHTML = '';
         renderCobranza(document.getElementById('app-content'));
+      } catch (e) {
+        showToast('Error: ' + e.message, 'err');
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // OPERACIÓN — GASTOS OPERACIONALES
+    // ═══════════════════════════════════════════
+
+    const OPERACION_COLS = [
+      'Fecha','Concepto','Proveedor','Monto','Forma de Pago',
+      'Banco','Responsable del pago','Finalidad','Deducible'
+    ];
+
+    async function renderOperacion(container) {
+      await ensureData('Operacion');
+      const rows = DATA.Operacion.rows;
+
+      // Stats
+      const total = rows.reduce((s,r) => s + (parseFloat(String(r['Monto']||'0').replace(/,/g,''))||0), 0);
+      const mesActual = new Date().getMonth() + 1;
+      const gastosMes = rows.filter(r => {
+        const p = String(r['Fecha']||'').split('/');
+        return p.length >= 2 && parseInt(p[1]) === mesActual;
+      }).reduce((s,r) => s + (parseFloat(String(r['Monto']||'0').replace(/,/g,''))||0), 0);
+      const deducibles = rows.filter(r => (r['Deducible']||'').toLowerCase() === 'sí')
+        .reduce((s,r) => s + (parseFloat(String(r['Monto']||'0').replace(/,/g,''))||0), 0);
+
+      container.innerHTML = `
+        <div class="section-title">💰 Operación — Gastos Operacionales Rizkora</div>
+
+        <div class="dashboard-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="label">Total Gastos</div>
+            <div class="value" style="font-size:22px">$${fmtMonto(total)}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Gastos del Mes</div>
+            <div class="value" style="font-size:22px">$${fmtMonto(gastosMes)}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Deducibles</div>
+            <div class="value" style="font-size:22px;color:var(--green)">$${fmtMonto(deducibles)}</div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <input type="text" class="search-input" id="search-operacion"
+                 placeholder="🔍 Buscar por concepto, proveedor, finalidad..."
+                 oninput="filtrarOperacion()">
+          <button class="btn btn-primary" onclick="toggleFormOperacion()">➕ Nuevo Gasto</button>
+        </div>
+
+        <div id="form-operacion-wrapper" style="display:none"></div>
+        <div id="table-operacion-wrapper"></div>
+      `;
+
+      renderTablaOperacion(rows);
+    }
+
+    function renderTablaOperacion(rows) {
+      const wrapper = document.getElementById('table-operacion-wrapper');
+      if (!rows.length) {
+        wrapper.innerHTML = '<div class="empty-state">No hay gastos registrados. Haz clic en ➕ Nuevo Gasto.</div>';
+        return;
+      }
+
+      const cols = ['Fecha','Concepto','Proveedor','Monto','Forma de Pago','Banco','Responsable del pago','Deducible'];
+
+      wrapper.innerHTML = `
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              ${cols.map(c => `<th>${escapeHTML(c)}</th>`).join('')}
+              <th style="text-align:center">Acc.</th>
+            </tr></thead>
+            <tbody>
+              ${rows.map((row, _) => {
+                const realIdx = DATA.Operacion.rows.indexOf(row);
+                const ded = (row['Deducible']||'').toLowerCase() === 'sí';
+                return `<tr>
+                  ${cols.map(c => {
+                    if (c === 'Monto') return `<td style="text-align:right">$${fmtMonto(row[c])}</td>`;
+                    if (c === 'Deducible') return `<td style="color:${ded?'var(--green)':'var(--white-40)'};font-weight:600">${escapeHTML(row[c])}</td>`;
+                    return `<td>${escapeHTML(row[c])}</td>`;
+                  }).join('')}
+                  <td style="text-align:center;white-space:nowrap">
+                    <button class="btn-icon" title="Editar" onclick="cargarEdicionOperacion(${realIdx})">📝</button>
+                    <button class="btn-icon" title="Eliminar" onclick="eliminarOperacion(${realIdx})">🗑️</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function filtrarOperacion() {
+      const q = (document.getElementById('search-operacion')?.value || '').toLowerCase();
+      const filtered = DATA.Operacion.rows.filter(row =>
+        OPERACION_COLS.some(c => String(row[c]||'').toLowerCase().includes(q))
+      );
+      renderTablaOperacion(filtered);
+    }
+
+    function toggleFormOperacion(data = null, index = null) {
+      const wrapper = document.getElementById('form-operacion-wrapper');
+      editingIndex = index;
+      const isEdit = index !== null;
+      const d = data || {};
+
+      wrapper.style.display = 'block';
+      wrapper.innerHTML = `
+        <div class="form-panel">
+          <div class="section-title" style="border:none;margin-bottom:16px">
+            ${isEdit ? '📝 Editando Gasto' : '📝 Nuevo Gasto Operacional'}
+          </div>
+          <div class="form-grid">
+            ${dateInputHTML('op-fecha', 'Fecha *', d['Fecha'] || (isEdit ? '' : fechaHoy()))}
+            ${selectHTML('op-concepto', OPCIONES.conceptoOp, d['Concepto'], 'Concepto *')}
+            ${inputHTML('op-proveedor', 'Proveedor *', d['Proveedor'], 'Nombre del proveedor')}
+            ${inputHTML('op-monto', 'Monto ($) *', d['Monto'], '0.00')}
+            ${selectHTML('op-pago', OPCIONES.formaPagoOp, d['Forma de Pago'], 'Forma de Pago')}
+            ${selectHTML('op-banco', OPCIONES.banco, d['Banco'], 'Banco')}
+            ${inputHTML('op-responsable', 'Responsable del pago', d['Responsable del pago'], 'Persona que realizó el pago')}
+            ${selectHTML('op-deducible', OPCIONES.deducible, d['Deducible'] || 'No', 'Deducible')}
+            ${textareaHTML('op-finalidad', 'Finalidad', d['Finalidad'], 'Descripción detallada del gasto')}
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="guardarOperacion()">
+              💾 ${isEdit ? 'Actualizar Gasto' : 'Agregar Gasto'}
+            </button>
+            <button class="btn btn-secondary" onclick="cerrarFormOperacion()">❌ Cancelar</button>
+          </div>
+        </div>
+      `;
+      wrapper.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function cerrarFormOperacion() {
+      document.getElementById('form-operacion-wrapper').style.display = 'none';
+      editingIndex = null;
+    }
+
+    function cargarEdicionOperacion(index) {
+      const row = DATA.Operacion.rows[index];
+      if (!row) return;
+      toggleFormOperacion(row, index);
+    }
+
+    async function guardarOperacion() {
+      const fecha = (document.getElementById('op-fecha')?.value || '').trim();
+      const concepto = document.getElementById('op-concepto')?.value || '';
+      const proveedor = (document.getElementById('op-proveedor')?.value || '').trim();
+      const monto = (document.getElementById('op-monto')?.value || '').trim();
+
+      if (!fecha) { showToast('La fecha es obligatoria', 'err'); return; }
+      if (!concepto) { showToast('El concepto es obligatorio', 'err'); return; }
+      if (!proveedor) { showToast('El proveedor es obligatorio', 'err'); return; }
+      if (!monto || parseFloat(monto) <= 0) { showToast('El monto debe ser mayor a 0', 'err'); return; }
+
+      const nf = normalizeFecha(fecha);
+      if (!nf.ok) { showToast('Fecha: ' + nf.error, 'err'); return; }
+
+      const values = [
+        nf.value,
+        concepto,
+        proveedor,
+        monto,
+        document.getElementById('op-pago')?.value || '',
+        document.getElementById('op-banco')?.value || '',
+        document.getElementById('op-responsable')?.value || '',
+        document.getElementById('op-finalidad')?.value || '',
+        document.getElementById('op-deducible')?.value || 'No'
+      ];
+
+      try {
+        if (editingIndex !== null) {
+          await updateRow('Operacion', editingIndex, values);
+          showToast('✅ Gasto actualizado');
+        } else {
+          await addRow('Operacion', values);
+          showToast('✅ Gasto registrado');
+        }
+        DATA.Operacion = await readTable('Operacion');
+        cerrarFormOperacion();
+        renderOperacion(document.getElementById('app-content'));
+      } catch (e) {
+        showToast('Error: ' + e.message, 'err');
+      }
+    }
+
+    async function eliminarOperacion(index) {
+      const row = DATA.Operacion.rows[index];
+      const desc = `${row?.['Concepto']||''} - ${row?.['Proveedor']||''} - $${fmtMonto(row?.['Monto'])}`;
+      if (!confirm(`¿Eliminar este gasto?\n\n${desc}`)) return;
+
+      try {
+        await deleteRow('Operacion', index);
+        showToast('🗑️ Gasto eliminado');
+        DATA.Operacion = await readTable('Operacion');
+        renderOperacion(document.getElementById('app-content'));
       } catch (e) {
         showToast('Error: ' + e.message, 'err');
       }
