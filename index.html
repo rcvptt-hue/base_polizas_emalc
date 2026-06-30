@@ -2505,9 +2505,166 @@
       return isNaN(n) ? '0.00' : n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     }
 
+    function parseMonto(val) {
+      if (val == null || val === '') return 0;
+      const n = parseFloat(String(val).replace(/,/g,'').replace('$','').trim());
+      return isNaN(n) ? 0 : n;
+    }
+
+    /** Suma meses a una fecha (maneja overflow de día, ej: 31 ene + 1 mes = 28 feb) */
+    function addMonths(date, months) {
+      const d = new Date(date);
+      const day = d.getDate();
+      d.setMonth(d.getMonth() + months);
+      if (d.getDate() !== day) d.setDate(0);
+      return d;
+    }
+
+    function fmtDateDMY(d) {
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+    }
+
+    // ═══════════════════════════════════════════
+    // MOTOR DE CÁLCULO DE COBRANZA
+    // ═══════════════════════════════════════════
+
+    /**
+     * Genera recibos de cobranza para todas las pólizas vigentes.
+     * Calcula desde el inicio de vigencia hasta 60 días en el futuro.
+     * Solo genera recibos que NO existan ya en la tabla de Cobranza.
+     *
+     * Periodicidad:
+     *   CONTADO    → 1 recibo por año (cada 12 meses)
+     *   MENSUAL    → 1 recibo por mes
+     *   TRIMESTRAL → 1 recibo cada 3 meses
+     *   SEMESTRAL  → 1 recibo cada 6 meses
+     */
+    async function calcularCobranza() {
+      await ensureData('Polizas');
+      await ensureData('Cobranza');
+
+      const polizas = DATA.Polizas.rows.filter(r =>
+        (r['Estado'] || '').toUpperCase() === 'VIGENTE'
+      );
+
+      if (!polizas.length) return [];
+
+      const cobranzaExistente = DATA.Cobranza.rows;
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+      const fechaLimite = new Date(hoy);
+      fechaLimite.setDate(fechaLimite.getDate() + 60);
+
+      const nuevos = [];
+
+      for (const pol of polizas) {
+        const noPoliza = String(pol['No. Póliza'] || '').trim();
+        const periodicidad = (pol['Periodicidad'] || 'MENSUAL').toUpperCase().trim();
+        const moneda = pol['Moneda'] || 'MXN';
+        const nombre = pol['Nombre/Razón Social'] || '';
+        const clave = pol['Clave de Emisión'] || '';
+
+        let primerPago = parseMonto(pol['Primer Pago']);
+        let pagosSub = parseMonto(pol['Pagos Subsecuentes']);
+        if (pagosSub === 0) pagosSub = primerPago;
+
+        const inicioStr = String(pol['Inicio Vigencia'] || '');
+        if (!noPoliza || !inicioStr) continue;
+
+        const inicioDate = parseDateDMY(inicioStr);
+        if (!inicioDate) continue;
+
+        let fechaActual = new Date(inicioDate);
+        let numRecibo = 1;
+        const maxRecibos = 36;
+
+        while (numRecibo <= maxRecibos && fechaActual <= fechaLimite) {
+          // ¿Ya existe este recibo?
+          const existe = cobranzaExistente.some(r =>
+            String(r['No. Póliza'] || '').trim() === noPoliza &&
+            parseInt(r['Recibo']) === numRecibo
+          );
+
+          if (!existe) {
+            const monto = numRecibo === 1 ? primerPago : pagosSub;
+            const esVencido = fechaActual < hoy;
+            const diasDiff = Math.ceil((fechaActual - hoy) / 86400000);
+
+            nuevos.push([
+              noPoliza,                                                    // No. Póliza
+              `${String(fechaActual.getMonth()+1).padStart(2,'0')}/${fechaActual.getFullYear()}`, // Mes Cobranza
+              monto,                                                       // Prima de Recibo
+              0,                                                           // Monto Pagado
+              '',                                                          // Fecha Pago
+              esVencido ? 'Vencido' : 'Pendiente',                        // Estatus
+              esVencido ? Math.abs(diasDiff) : 0,                         // Días Atraso
+              fmtDateDMY(fechaActual),                                    // Fecha Vencimiento
+              nombre,                                                      // Nombre/Razón Social
+              diasDiff,                                                    // Días Restantes
+              periodicidad,                                                // Periodicidad
+              moneda,                                                      // Moneda
+              numRecibo,                                                   // Recibo
+              clave,                                                       // Clave de Emisión
+              esVencido ? 'Cobranza vencida - registro tardío' : ''       // Comentario
+            ]);
+          }
+
+          // Avanzar fecha según periodicidad
+          switch (periodicidad) {
+            case 'CONTADO':    fechaActual = addMonths(fechaActual, 12); break;
+            case 'TRIMESTRAL': fechaActual = addMonths(fechaActual, 3);  break;
+            case 'SEMESTRAL':  fechaActual = addMonths(fechaActual, 6);  break;
+            case 'MENSUAL': default: fechaActual = addMonths(fechaActual, 1); break;
+          }
+          numRecibo++;
+        }
+      }
+
+      return nuevos;
+    }
+
+    /** Ejecuta el cálculo y guarda los nuevos recibos en el Excel */
+    async function ejecutarRecalculo() {
+      const btn = document.getElementById('btn-recalcular');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando...'; }
+
+      try {
+        const nuevos = await calcularCobranza();
+
+        if (!nuevos.length) {
+          showToast('No hay recibos nuevos por generar. Todo está al día.', 'ok');
+          if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalcular Cobranza'; }
+          return;
+        }
+
+        // Guardar cada recibo nuevo en la tabla
+        let guardados = 0;
+        for (const values of nuevos) {
+          try {
+            await addRow('Cobranza', values);
+            guardados++;
+          } catch (e) {
+            console.error('Error guardando recibo:', e);
+          }
+        }
+
+        showToast(`✅ ${guardados} recibos generados (${nuevos.filter(r=>r[5]==='Vencido').length} vencidos, ${nuevos.filter(r=>r[5]==='Pendiente').length} pendientes)`);
+
+        // Recargar datos y refrescar
+        DATA.Cobranza = await readTable('Cobranza');
+        renderCobranza(document.getElementById('app-content'));
+
+      } catch (e) {
+        showToast('Error en cálculo: ' + e.message, 'err');
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalcular Cobranza'; }
+      }
+    }
+
     async function renderCobranza(container) {
       await ensureData('Cobranza');
+      await ensureData('Polizas');
       const rows = DATA.Cobranza.rows;
+
+      const polizasVigentes = DATA.Polizas.rows.filter(r => (r['Estado']||'').toUpperCase() === 'VIGENTE').length;
 
       if (!rows.length) {
         container.innerHTML = `
@@ -2515,9 +2672,13 @@
           <div class="empty-state">
             <p style="font-size:48px;margin-bottom:16px">📋</p>
             <p style="color:var(--white-70)">No hay registros de cobranza.</p>
-            <p style="font-size:13px;margin-top:8px;color:var(--white-40)">
-              Los recibos se generarán con el motor de cálculo (en desarrollo) o puedes agregarlos manualmente en el Excel.
+            <p style="font-size:13px;margin-top:12px;color:var(--white-40)">
+              Hay <strong style="color:var(--gold)">${polizasVigentes}</strong> pólizas vigentes.
+              Haz clic en el botón para generar los recibos automáticamente.
             </p>
+            <button class="btn btn-primary" id="btn-recalcular" onclick="ejecutarRecalculo()" style="margin-top:16px;width:auto">
+              🔄 Recalcular Cobranza
+            </button>
           </div>`;
         return;
       }
@@ -2559,6 +2720,9 @@
 
         <!-- Filtros -->
         <div class="toolbar">
+          <button class="btn btn-primary" id="btn-recalcular" onclick="ejecutarRecalculo()" style="width:auto">
+            🔄 Recalcular Cobranza
+          </button>
           <select id="filtro-cobranza" onchange="filtrarCobranza()">
             <option value="pendiente-vencido">Pendientes + Vencidos (${pendientes.length + vencidos.length})</option>
             <option value="pendiente">Solo Pendientes (${pendientes.length})</option>
