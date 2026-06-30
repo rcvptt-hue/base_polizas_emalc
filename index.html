@@ -955,6 +955,9 @@
         case 'prospectos':
           renderProspectos(content);
           break;
+        case 'seguimiento':
+          renderSeguimiento(content);
+          break;
         default:
           content.innerHTML = `
             <div class="empty-state">
@@ -1479,6 +1482,178 @@
         const result = await readTable('Prospectos');
         DATA.Prospectos = result;
         renderProspectos(document.getElementById('app-content'));
+
+      } catch (e) {
+        showToast('Error al eliminar: ' + e.message, 'err');
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // SEGUIMIENTO — MÓDULO COMPLETO
+    // ═══════════════════════════════════════════
+
+    const SEGUIMIENTO_COLS = [
+      'Nombre/Razón Social', 'Fecha Contacto', 'Estatus', 'Comentarios', 'Fecha Registro'
+    ];
+
+    async function renderSeguimiento(container) {
+      await ensureData('Prospectos');
+      await ensureData('Seguimiento');
+
+      const prospectos = DATA.Prospectos.rows.map(r => r['Nombre/Razón Social']).filter(Boolean);
+      const seguimientos = DATA.Seguimiento.rows;
+
+      // Stats
+      const total = seguimientos.length;
+      const convertidos = seguimientos.filter(r => (r['Estatus'] || '').toLowerCase() === 'convertido').length;
+      const enSeguimiento = seguimientos.filter(r => (r['Estatus'] || '').toLowerCase() === 'seguimiento').length;
+
+      container.innerHTML = `
+        <div class="section-title">📞 Seguimiento de Prospectos</div>
+
+        <div class="dashboard-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="label">Total Seguimientos</div>
+            <div class="value">${total}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">En Seguimiento</div>
+            <div class="value">${enSeguimiento}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Convertidos</div>
+            <div class="value" style="color:var(--green)">${convertidos}</div>
+          </div>
+        </div>
+
+        <!-- Formulario de nuevo seguimiento -->
+        <div class="form-panel">
+          <div class="section-title" style="border:none;margin-bottom:16px">📝 Registrar Seguimiento</div>
+          <div class="form-grid">
+            ${selectHTML('s-prospecto', prospectos, '', 'Seleccionar Prospecto *', 'Seleccionar prospecto...')}
+            ${dateInputHTML('s-fecha', 'Fecha de Contacto *', fechaHoy())}
+            ${selectHTML('s-estatus', OPCIONES.estatusSeguimiento, '', 'Estatus *')}
+            <div class="input-group">
+              <label>Comentarios *</label>
+              <textarea id="s-comentarios" placeholder="Anotar lo que indique el prospecto..." style="min-height:80px"></textarea>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="guardarSeguimiento()">
+              💾 Guardar Seguimiento
+            </button>
+          </div>
+        </div>
+
+        <!-- Filtro + tabla -->
+        <div class="toolbar">
+          <input type="text" class="search-input" id="search-seguimiento"
+                 placeholder="🔍 Buscar por nombre, estatus, comentario..."
+                 oninput="filtrarSeguimientos()">
+        </div>
+
+        <div id="table-seguimiento-wrapper"></div>
+      `;
+
+      renderTablaSeguimientos(seguimientos);
+    }
+
+    function renderTablaSeguimientos(rows) {
+      const wrapper = document.getElementById('table-seguimiento-wrapper');
+      if (!rows.length) {
+        wrapper.innerHTML = '<div class="empty-state">No hay seguimientos registrados.</div>';
+        return;
+      }
+
+      // Ordenar por fecha de contacto descendente (más reciente primero)
+      const sorted = [...rows].sort((a, b) => {
+        const parseF = s => { const p = String(s||'').split('/'); return p.length===3 ? new Date(p[2],p[1]-1,p[0]) : new Date(0); };
+        return parseF(b['Fecha Contacto']) - parseF(a['Fecha Contacto']);
+      });
+
+      wrapper.innerHTML = `
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              ${SEGUIMIENTO_COLS.map(c => `<th>${escapeHTML(c)}</th>`).join('')}
+              <th style="text-align:center">Acc.</th>
+            </tr></thead>
+            <tbody>
+              ${sorted.map((row, _) => {
+                // Encontrar el índice real en DATA (no el sorted index)
+                const realIndex = DATA.Seguimiento.rows.indexOf(row);
+                const estatus = (row['Estatus'] || '').toLowerCase();
+                const badge = estatus === 'convertido' ? 'color:var(--green);font-weight:600'
+                            : estatus === 'descartado' ? 'color:var(--red);font-weight:600'
+                            : 'color:var(--amber);font-weight:600';
+                return `<tr>
+                  <td>${escapeHTML(row['Nombre/Razón Social'])}</td>
+                  <td>${escapeHTML(row['Fecha Contacto'])}</td>
+                  <td style="${badge}">${escapeHTML(row['Estatus'])}</td>
+                  <td style="max-width:300px">${escapeHTML(row['Comentarios'])}</td>
+                  <td>${escapeHTML(row['Fecha Registro'])}</td>
+                  <td style="text-align:center">
+                    <button class="btn-icon" title="Eliminar" onclick="eliminarSeguimiento(${realIndex})">🗑️</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function filtrarSeguimientos() {
+      const q = (document.getElementById('search-seguimiento')?.value || '').toLowerCase();
+      const filtered = DATA.Seguimiento.rows.filter(row =>
+        SEGUIMIENTO_COLS.some(c => String(row[c] || '').toLowerCase().includes(q))
+      );
+      renderTablaSeguimientos(filtered);
+    }
+
+    async function guardarSeguimiento() {
+      const prospecto = document.getElementById('s-prospecto')?.value || '';
+      const fecha = document.getElementById('s-fecha')?.value || '';
+      const estatus = document.getElementById('s-estatus')?.value || '';
+      const comentarios = (document.getElementById('s-comentarios')?.value || '').trim();
+
+      if (!prospecto) { showToast('Selecciona un prospecto', 'err'); return; }
+      if (!fecha) { showToast('La fecha de contacto es obligatoria', 'err'); return; }
+      if (!estatus) { showToast('Selecciona un estatus', 'err'); return; }
+      if (!comentarios) { showToast('Los comentarios son obligatorios', 'err'); return; }
+
+      const normFecha = normalizeFecha(fecha);
+      if (!normFecha.ok) { showToast('Fecha de contacto: ' + normFecha.error, 'err'); return; }
+
+      const values = [prospecto, normFecha.value, estatus, comentarios, fechaHoy()];
+
+      try {
+        await addRow('Seguimiento', values);
+        showToast('✅ Seguimiento guardado');
+
+        if (estatus === 'Convertido') {
+          showToast('ℹ️ Prospecto marcado como Convertido — puedes crear su póliza en Registro', 'ok');
+        }
+
+        const result = await readTable('Seguimiento');
+        DATA.Seguimiento = result;
+        renderSeguimiento(document.getElementById('app-content'));
+
+      } catch (e) {
+        showToast('Error al guardar: ' + e.message, 'err');
+      }
+    }
+
+    async function eliminarSeguimiento(index) {
+      const nombre = DATA.Seguimiento.rows[index]?.['Nombre/Razón Social'] || '';
+      if (!confirm(`¿Eliminar seguimiento de "${nombre}"?`)) return;
+
+      try {
+        await deleteRow('Seguimiento', index);
+        showToast('🗑️ Seguimiento eliminado');
+
+        const result = await readTable('Seguimiento');
+        DATA.Seguimiento = result;
+        renderSeguimiento(document.getElementById('app-content'));
 
       } catch (e) {
         showToast('Error al eliminar: ' + e.message, 'err');
